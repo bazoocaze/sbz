@@ -99,6 +99,11 @@ def build_mounts(workspace: str, extra_rw: list[str], extra_ro: list[str], aws: 
     if exists(kh):
         args += ["--ro-bind", kh, kh]
 
+    # ~/.pi/agent → read-write (pi settings, sessions, etc)
+    pi_agent = f"{home}/.pi/agent"
+    if exists(pi_agent):
+        args += ["--bind", pi_agent, pi_agent]
+
     # ~/.local/share writable subdirs (bind — persiste no host)
     for d in ["zoxide", "uv"]:
         p = f"{home}/.local/share/{d}"
