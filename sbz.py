@@ -8,6 +8,8 @@ from pathlib import Path
 
 import tomllib
 
+from sbz_completion import handle_completion
+
 
 def get_version() -> str:
     """Read version from pyproject.toml."""
@@ -228,6 +230,9 @@ examples:
   sbz --aws aws s3 ls                     # access AWS credentials
   sbz -rw /tmp/data python train.py       # extra rw mount
   sbz -e API_KEY -w /proj node app.js     # pass env var
+  sbz completion bash                   # print bash completion script
+
+note: `sbz -- CMD` runs CMD literally (use for a binary named `completion`).
 
 environment:
   SBZ_WORKSPACE   default workspace (overrides $PWD)""")
@@ -235,6 +240,9 @@ environment:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "completion":
+        handle_completion(sys.argv[2:])
+
     args, command = parse_args()
 
     if not command:

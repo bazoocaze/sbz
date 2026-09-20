@@ -39,3 +39,13 @@ flags (default shown):
 ## Environment
 
 - `SBZ_WORKSPACE` - default workspace (overrides $PWD)
+
+## Completion
+
+```bash
+eval "$(sbz completion bash)"    # bash (~/.bashrc)
+eval "$(sbz completion zsh)"     # zsh (~/.zshrc)
+sbz completion fish | source     # fish (config.fish)
+```
+
+Note: `sbz -- CMD` runs `CMD` literally (escape hatch for a binary named `completion`).
