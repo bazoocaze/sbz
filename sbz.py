@@ -197,7 +197,7 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     return args, command
 
 
-def show_help() -> None:
+def show_help(exit_code: int = 0) -> None:
     print(f"""usage: sbz [OPTIONS] [--] COMMAND [ARGS...]
 
 Sandboxed command execution via bubblewrap.
@@ -226,14 +226,14 @@ examples:
 
 environment:
   SBZ_WORKSPACE   default workspace (overrides $PWD)""")
-    sys.exit(0)
+    sys.exit(exit_code)
 
 
 def main() -> None:
     args, command = parse_args()
 
     if not command:
-        show_help()
+        show_help(exit_code=1)
 
     # Resolve workspace
     workspace = args.workspace or os.environ.get("SBZ_WORKSPACE") or os.getcwd()
