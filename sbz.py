@@ -187,6 +187,8 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     parser.add_argument("--no-gh", dest="gh", action="store_false")
     parser.add_argument("--aws", dest="aws", action="store_true", default=False)
     parser.add_argument("--no-aws", dest="aws", action="store_false")
+    parser.add_argument("--docker", dest="docker", action="store_true", default=False)
+    parser.add_argument("--no-docker", dest="docker", action="store_false")
     parser.add_argument("-w", "--workspace", default=None)
     parser.add_argument("-rw", "--read-write", action="append", default=[])
     parser.add_argument("-ro", "--read-only", action="append", default=[])
@@ -222,12 +224,14 @@ flags (default shown):
   --net / --no-net       network access          [default: --net]
   --gh / --no-gh         SSH agent forwarding    [default: --gh]
   --aws / --no-aws       ~/.aws read-only        [default: --no-aws]
+  --docker / --no-docker Docker socket access    [default: --no-docker]
 
 examples:
   sbz ls -la                              # sandbox with network
   sbz --no-net curl example.com           # no network
   sbz --no-gh git push                    # block SSH agent
   sbz --aws aws s3 ls                     # access AWS credentials
+  sbz --docker docker ps                  # access Docker socket
   sbz -rw /tmp/data python train.py       # extra rw mount
   sbz -e API_KEY -w /proj node app.js     # pass env var
   sbz completion bash                   # print bash completion script
@@ -284,9 +288,15 @@ def main() -> None:
     if not args.gh:
         bwrap += ["--setenv", "SSH_AUTH_SOCK", ""]
 
-    # Run
+    # --docker: monta o socket no path real e aponta DOCKER_HOST
+    docker_sock = "/run/docker.sock"
+    if args.docker and exists(docker_sock):
+        bwrap += ["--bind", docker_sock, docker_sock]
+        bwrap += ["--setenv", "DOCKER_HOST", "unix:///run/docker.sock"]
+
+    # verbose
     if args.verbose:
-        print(f"sbz: workspace={workspace} net={args.network}", file=sys.stderr)
+        print(f"sbz: workspace={workspace} net={args.network} docker={args.docker}", file=sys.stderr)
         print(f"sbz: bwrap {' '.join(bwrap)} {' '.join(command)}", file=sys.stderr)
 
     os.execvp("bwrap", ["bwrap"] + bwrap + command)

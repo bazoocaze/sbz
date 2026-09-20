@@ -15,6 +15,7 @@ sbz ls -la                              # sandbox with network
 sbz --no-net curl example.com           # no network
 sbz --no-gh git push                    # block SSH agent
 sbz --aws aws s3 ls                     # access AWS credentials
+sbz --docker docker ps                  # access Docker socket
 sbz -rw /tmp/data python train.py       # extra rw mount
 sbz -e API_KEY -w /proj node app.js     # pass env var
 ```
@@ -34,6 +35,7 @@ flags (default shown):
   --net / --no-net       network access          [default: --net]
   --gh / --no-gh         SSH agent forwarding    [default: --gh]
   --aws / --no-aws       ~/.aws read-only        [default: --no-aws]
+  --docker / --no-docker Docker socket access    [default: --no-docker]
 ```
 
 ## Environment

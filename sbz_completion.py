@@ -34,9 +34,9 @@ _sbz() {
     done
 
     if [[ "$COMP_CWORD" == 1 ]]; then
-        COMPREPLY=( $(compgen -W "completion -h --help -V --version -v --verbose --net --no-net --gh --no-gh --aws --no-aws -w --workspace -rw --read-write -ro --read-only -e --env" -- "$cur") )
+        COMPREPLY=( $(compgen -W "completion -h --help -V --version -v --verbose --net --no-net --gh --no-gh --aws --no-aws --docker --no-docker -w --workspace -rw --read-write -ro --read-only -e --env" -- "$cur") )
     else
-        COMPREPLY=( $(compgen -W "-h --help -V --version -v --verbose --net --no-net --gh --no-gh --aws --no-aws -w --workspace -rw --read-write -ro --read-only -e --env" -- "$cur") )
+        COMPREPLY=( $(compgen -W "-h --help -V --version -v --verbose --net --no-net --gh --no-gh --aws --no-aws --docker --no-docker -w --workspace -rw --read-write -ro --read-only -e --env" -- "$cur") )
     fi
 }
 complete -F _sbz sbz
@@ -58,6 +58,8 @@ _sbz() {
         '--no-gh[block SSH agent]' \
         '--aws[~/.aws read-only]' \
         '--no-aws[hide ~/.aws]' \
+        '--docker[Docker socket access]' \
+        '--no-docker[block Docker socket]' \
         '(-w --workspace)'{-w,--workspace}'[workspace directory]:dir:_files -/' \
         '(-rw --read-write)'{-rw,--read-write}'[mount directory as read-write]:dir:_files -/' \
         '(-ro --read-only)'{-ro,--read-only}'[mount directory as read-only]:dir:_files -/' \
@@ -89,6 +91,8 @@ complete -c sbz -l gh -d 'SSH agent forwarding'
 complete -c sbz -l no-gh -d 'block SSH agent'
 complete -c sbz -l aws -d '~/.aws read-only'
 complete -c sbz -l no-aws -d 'hide ~/.aws'
+complete -c sbz -l docker -d 'Docker socket access'
+complete -c sbz -l no-docker -d 'block Docker socket'
 complete -c sbz -s w -l workspace -r -a '(__fish_print_directories)' -d 'workspace directory'
 complete -c sbz -s rw -l read-write -r -a '(__fish_print_directories)' -d 'mount directory as read-write'
 complete -c sbz -s ro -l read-only -r -a '(__fish_print_directories)' -d 'mount directory as read-only'
