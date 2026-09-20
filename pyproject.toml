@@ -1,0 +1,12 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sbz"
+version = "0.0.1"
+description = "Sandboxed command execution via bubblewrap"
+requires-python = ">=3.10"
+
+[project.scripts]
+sbz = "sbz:main"
