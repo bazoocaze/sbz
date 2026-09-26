@@ -36,7 +36,7 @@ DEFAULT_ENV = ["HOME", "USER", "SHELL", "TERM", "LANG", "LC_ALL", "PATH", "PWD"]
 RO_PATHS = ["/usr", "/bin", "/sbin", "/etc", "/lib", "/lib64", "/var"]
 
 # Optional paths mounted read-only if they exist
-OPTIONAL_RO = ["/nix", "/boot", "/sys"]
+OPTIONAL_RO = ["/opt", "/nix", "/boot", "/sys"]
 
 
 def die(msg: str) -> None:
