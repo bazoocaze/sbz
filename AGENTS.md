@@ -13,4 +13,5 @@
 ## Processes
 
 - Make release: bump patch version, update docs, commit, push. Commit message: "vN.N.N: message".
+- Tests: keep simple and focused, not exhaustive. Run `./run-tests.sh`.
 

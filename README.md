@@ -51,3 +51,10 @@ sbz completion fish | source     # fish (config.fish)
 ```
 
 Note: `sbz -- CMD` runs `CMD` literally (escape hatch for a binary named `completion`).
+
+## Development
+
+```bash
+./run-tests.sh          # run tests (pytest)
+./run-app.sh --version  # run from source
+```

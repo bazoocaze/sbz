@@ -4,9 +4,8 @@
 import argparse
 import os
 import sys
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 from sbz_completion import handle_completion
 
@@ -52,7 +51,7 @@ def build_mounts(workspace: str, extra_rw: list[str], extra_ro: list[str], aws: 
     """Build bwrap mount arguments."""
     args = [
         "--die-with-parent",
-        "--hostname", "sbz",
+        "--hostname", "sandbox",
         "--proc", "/proc",
         "--dev", "/dev",
         "--tmpfs", "/tmp",
@@ -61,7 +60,8 @@ def build_mounts(workspace: str, extra_rw: list[str], extra_ro: list[str], aws: 
 
     # Read-only system paths
     for p in RO_PATHS:
-        args += ["--ro-bind", p, p]
+        if exists(p):
+            args += ["--ro-bind", p, p]
 
     # Resolve resolv.conf symlink into /run (systemd-resolved)
     resolv = Path("/etc/resolv.conf")
@@ -79,6 +79,9 @@ def build_mounts(workspace: str, extra_rw: list[str], extra_ro: list[str], aws: 
     # Home: read-only base
     home = os.environ["HOME"]
     args += ["--ro-bind", home, home]
+
+    # Workspace: read-write (before writable overrides so it can't re-expose them)
+    args += ["--bind", workspace, workspace]
 
     # ~/.cache → tmpfs (tool caches, writable, não persiste no host)
     if exists(f"{home}/.cache"):
@@ -111,9 +114,6 @@ def build_mounts(workspace: str, extra_rw: list[str], extra_ro: list[str], aws: 
         p = f"{home}/.local/share/{d}"
         if exists(p):
             args += ["--bind", p, p]
-
-    # Workspace: read-write
-    args += ["--bind", workspace, workspace]
 
     # Additional mounts
     for d in extra_rw:
@@ -207,7 +207,7 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
 
 
 def show_help(exit_code: int = 0) -> None:
-    print(f"""usage: sbz [OPTIONS] [--] COMMAND [ARGS...]
+    print("""usage: sbz [OPTIONS] [--] COMMAND [ARGS...]
 
 Sandboxed command execution via bubblewrap.
 
@@ -259,7 +259,7 @@ def main() -> None:
     workspace = str(Path(workspace).resolve())
 
     # Build bwrap arguments
-    bwrap = build_mounts(workspace, args.read_write, args.read_only)
+    bwrap = build_mounts(workspace, args.read_write, args.read_only, aws=args.aws)
 
     # Chdir to workspace
     bwrap += ["--chdir", workspace]
