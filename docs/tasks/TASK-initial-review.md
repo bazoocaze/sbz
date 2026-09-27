@@ -12,7 +12,7 @@ Review of `sbz` (bubblewrap wrapper). Findings below; fixes tracked in this task
 
 ## Robustness / design
 
-- [ ] Manual parser (sbz.py:144) does not handle combined short flags (`-vw dir`), attached `-eVAR`, or `sbz -v completion ...`. Deferred.
+- [x] Manual parser (sbz.py:144) did not handle combined short flags (`-vw dir`) etc. Replaced with `optparse` + `disable_interspersed_args()`. CLI changes: `-rw`/`-ro` → `-r`/`-R`; `completion SHELL` → `--completion SHELL`.
 - [x] `handle_completion` lacks explicit `return`/`sys.exit` at caller (sbz.py:247).
 - [x] Inconsistent exit codes (manual help 0/1 vs argparse 2). No-command now exits 2.
 
@@ -20,7 +20,7 @@ Review of `sbz` (bubblewrap wrapper). Findings below; fixes tracked in this task
 
 - [x] `uv.lock` stale (0.0.2) vs pyproject 0.0.7.
 - [x] `.venv/` not in `.gitignore`; local venv is stale (0.0.2).
-- [ ] `pyproject.toml` missing readme/license/authors/urls/classifiers. Deferred.
+- [x] `pyproject.toml` missing readme/license/authors/urls/classifiers. Added (license MIT + LICENSE file).
 
 ## Security defaults
 

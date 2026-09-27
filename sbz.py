@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """sbz — Sandboxed command execution via bubblewrap."""
 
-import argparse
+import optparse
 import os
 import sys
 import tomllib
@@ -38,9 +38,9 @@ RO_PATHS = ["/usr", "/bin", "/sbin", "/etc", "/lib", "/lib64", "/var"]
 OPTIONAL_RO = ["/opt", "/nix", "/boot", "/sys"]
 
 
-def die(msg: str) -> None:
+def die(msg: str, code: int = 1) -> None:
     print(f"sbz: error: {msg}", file=sys.stderr)
-    sys.exit(1)
+    sys.exit(code)
 
 
 def exists(path: str) -> bool:
@@ -141,136 +141,61 @@ def build_env(extra_vars: list[str]) -> list[str]:
     return args
 
 
-def parse_args() -> tuple[argparse.Namespace, list[str]]:
-    """Parse sbz options and split command from the first non-option arg."""
-    # Flags that consume the next arg as their value
-    flags_with_value = {"-w", "--workspace", "-rw", "--read-write", "-ro", "--read-only", "-e", "--env"}
-
-    argv = sys.argv[1:]
-    options: list[str] = []
-    command: list[str] = []
-    i = 0
-
-    while i < len(argv):
-        arg = argv[i]
-
-        if arg == "--":
-            command = argv[i + 1:]
-            break
-
-        if arg.startswith("-") and arg not in ("--",):
-            options.append(arg)
-            # Consume next arg as value for flags that need one
-            if arg in flags_with_value:
-                i += 1
-                if i < len(argv):
-                    options.append(argv[i])
-        else:
-            # First non-option arg starts the command
-            command = argv[i:]
-            break
-
-        i += 1
-
-    parser = argparse.ArgumentParser(
+def build_parser() -> optparse.OptionParser:
+    parser = optparse.OptionParser(
         prog="sbz",
-        description="Sandboxed command execution via bubblewrap",
-        usage="%(prog)s [OPTIONS] [--] COMMAND [ARGS...]",
-        add_help=False,
+        usage="sbz [OPTIONS] [--] COMMAND [ARGS...]",
+        description="Sandboxed command execution via bubblewrap.",
+        epilog=(
+            "security: --gh forwards your SSH agent; "
+            "--docker grants root-equivalent host access."
+        ),
     )
-    parser.add_argument("-h", "--help", action="store_true")
-    parser.add_argument("-V", "--version", action="store_true")
-    parser.add_argument("-v", "--verbose", action="store_true")
-    parser.add_argument("--net", dest="network", action="store_true", default=True)
-    parser.add_argument("--no-net", dest="network", action="store_false")
-    parser.add_argument("--gh", dest="gh", action="store_true", default=True)
-    parser.add_argument("--no-gh", dest="gh", action="store_false")
-    parser.add_argument("--aws", dest="aws", action="store_true", default=False)
-    parser.add_argument("--no-aws", dest="aws", action="store_false")
-    parser.add_argument("--docker", dest="docker", action="store_true", default=False)
-    parser.add_argument("--no-docker", dest="docker", action="store_false")
-    parser.add_argument("-w", "--workspace", default=None)
-    parser.add_argument("-rw", "--read-write", action="append", default=[])
-    parser.add_argument("-ro", "--read-only", action="append", default=[])
-    parser.add_argument("-e", "--env", action="append", default=[], metavar="VAR")
-
-    args = parser.parse_args(options)
-
-    if args.help:
-        show_help()
-
-    if args.version:
-        print(f"sbz v{VERSION}")
-        sys.exit(0)
-
-    return args, command
-
-
-def show_help(exit_code: int = 0) -> None:
-    print("""usage: sbz [OPTIONS] [--] COMMAND [ARGS...]
-
-Sandboxed command execution via bubblewrap.
-
-options:
-  -h, --help             show this help
-  -V, --version          show version
-  -v, --verbose          show bwrap arguments
-  -w, --workspace DIR    workspace directory (default: $PWD)
-  -rw, --read-write DIR  mount directory as read-write
-  -ro, --read-only DIR   mount directory as read-only
-  -e, --env VAR          pass environment variable (can repeat)
-
-flags (default shown):
-  --net / --no-net       network access          [default: --net]
-  --gh / --no-gh         SSH agent forwarding    [default: --gh]
-  --aws / --no-aws       ~/.aws read-only        [default: --no-aws]
-  --docker / --no-docker Docker socket access    [default: --no-docker]
-
-examples:
-  sbz ls -la                              # sandbox with network
-  sbz --no-net curl example.com           # no network
-  sbz --no-gh git push                    # block SSH agent
-  sbz --aws aws s3 ls                     # access AWS credentials
-  sbz --docker docker ps                  # access Docker socket
-  sbz -rw /tmp/data python train.py       # extra rw mount
-  sbz -e API_KEY -w /proj node app.js     # pass env var
-  sbz completion bash                   # print bash completion script
-
-note: `sbz -- CMD` runs CMD literally (use for a binary named `completion`).
-
-security notes:
-  --gh     forwards the SSH agent to the sandbox (keys usable inside).
-  --docker mounts the Docker socket (root-equivalent host access).
-
-environment:
-  SBZ_WORKSPACE   default workspace (overrides $PWD)""")
-    sys.exit(exit_code)
+    parser.version = f"sbz v{VERSION}"
+    parser.add_option("-V", "--version", action="version", help="show version")
+    parser.add_option("-v", "--verbose", action="store_true", help="show bwrap arguments")
+    parser.add_option("--net", dest="network", action="store_true", default=True, help="network access")
+    parser.add_option("--no-net", dest="network", action="store_false", help="disable network access")
+    parser.add_option("--gh", dest="gh", action="store_true", default=True, help="SSH agent forwarding")
+    parser.add_option("--no-gh", dest="gh", action="store_false", help="block SSH agent")
+    parser.add_option("--aws", dest="aws", action="store_true", default=False, help="~/.aws read-only")
+    parser.add_option("--no-aws", dest="aws", action="store_false", help="hide ~/.aws")
+    parser.add_option("--docker", dest="docker", action="store_true", default=False, help="Docker socket access")
+    parser.add_option("--no-docker", dest="docker", action="store_false", help="block Docker socket")
+    parser.add_option("-w", "--workspace", metavar="DIR", help="workspace directory (default: $PWD)")
+    parser.add_option("-r", "--read-write", action="append", dest="read_write", default=[], metavar="DIR", help="mount directory as read-write")
+    parser.add_option("-R", "--read-only", action="append", dest="read_only", default=[], metavar="DIR", help="mount directory as read-only")
+    parser.add_option("-e", "--env", action="append", default=[], metavar="VAR", help="pass environment variable (repeatable)")
+    parser.add_option("--completion", metavar="SHELL", help="print shell completion script (bash/zsh/fish)")
+    parser.disable_interspersed_args()
+    return parser
 
 
 def main() -> None:
-    if len(sys.argv) > 1 and sys.argv[1] == "completion":
-        handle_completion(sys.argv[2:])
+    parser = build_parser()
+    opts, command = parser.parse_args(sys.argv[1:])
+
+    if opts.completion:
+        handle_completion([opts.completion])
         return
 
-    args, command = parse_args()
-
     if not command:
-        show_help(exit_code=2)
+        parser.error("no command given")
 
     # Resolve workspace
-    workspace = args.workspace or os.environ.get("SBZ_WORKSPACE") or os.getcwd()
+    workspace = opts.workspace or os.environ.get("SBZ_WORKSPACE") or os.getcwd()
     if not exists(workspace):
         die(f"workspace not found: {workspace}")
     workspace = str(Path(workspace).resolve())
 
     # Build bwrap arguments
-    bwrap = build_mounts(workspace, args.read_write, args.read_only, aws=args.aws)
+    bwrap = build_mounts(workspace, opts.read_write, opts.read_only, aws=opts.aws)
 
     # Chdir to workspace
     bwrap += ["--chdir", workspace]
 
     # Network mode
-    if args.network:
+    if opts.network:
         # Share host network, isolate other namespaces
         bwrap += ["--unshare-pid", "--unshare-uts", "--unshare-ipc", "--unshare-user"]
     else:
@@ -278,30 +203,30 @@ def main() -> None:
         bwrap += ["--unshare-all"]
 
     # Environment
-    extra_env = list(args.env)
-    if args.gh:
+    extra_env = list(opts.env)
+    if opts.gh:
         extra_env.append("SSH_AUTH_SOCK")
     bwrap += build_env(extra_env)
 
     # --gh: monta o socket do SSH agent como rw
-    if args.gh:
+    if opts.gh:
         sock = os.environ.get("SSH_AUTH_SOCK", "")
         if sock and exists(sock):
             bwrap += ["--bind", sock, sock]
 
     # --no-gh: limpa SSH_AUTH_SOCK
-    if not args.gh:
+    if not opts.gh:
         bwrap += ["--setenv", "SSH_AUTH_SOCK", ""]
 
     # --docker: monta o socket no path real e aponta DOCKER_HOST
     docker_sock = "/run/docker.sock"
-    if args.docker and exists(docker_sock):
+    if opts.docker and exists(docker_sock):
         bwrap += ["--bind", docker_sock, docker_sock]
         bwrap += ["--setenv", "DOCKER_HOST", "unix:///run/docker.sock"]
 
     # verbose
-    if args.verbose:
-        print(f"sbz: workspace={workspace} net={args.network} docker={args.docker}", file=sys.stderr)
+    if opts.verbose:
+        print(f"sbz: workspace={workspace} net={opts.network} docker={opts.docker}", file=sys.stderr)
         print(f"sbz: bwrap {' '.join(bwrap)} {' '.join(command)}", file=sys.stderr)
 
     os.execvp("bwrap", ["bwrap"] + bwrap + command)

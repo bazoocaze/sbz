@@ -4,14 +4,14 @@ import sys
 
 SHELLS = ("bash", "zsh", "fish")
 
-BASH_COMPLETION = r"""# sbz bash completion — add to ~/.bashrc: eval "$(sbz completion bash)"
+BASH_COMPLETION = r"""# sbz bash completion — add to ~/.bashrc: eval "$(sbz --completion bash)"
 _sbz() {
     local cur prev
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     case "$prev" in
-        -w|--workspace|-rw|--read-write|-ro|--read-only)
+        -w|--workspace|-r|--read-write|-R|--read-only)
             COMPREPLY=( $(compgen -d -- "$cur") )
             return 0
             ;;
@@ -19,7 +19,7 @@ _sbz() {
             COMPREPLY=( $(compgen -v -- "$cur") )
             return 0
             ;;
-        completion)
+        --completion)
             COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
             return 0
             ;;
@@ -33,21 +33,14 @@ _sbz() {
         fi
     done
 
-    if [[ "$COMP_CWORD" == 1 ]]; then
-        COMPREPLY=( $(compgen -W "completion -h --help -V --version -v --verbose --net --no-net --gh --no-gh --aws --no-aws --docker --no-docker -w --workspace -rw --read-write -ro --read-only -e --env" -- "$cur") )
-    else
-        COMPREPLY=( $(compgen -W "-h --help -V --version -v --verbose --net --no-net --gh --no-gh --aws --no-aws --docker --no-docker -w --workspace -rw --read-write -ro --read-only -e --env" -- "$cur") )
-    fi
+    COMPREPLY=( $(compgen -W "-h --help -V --version -v --verbose --net --no-net --gh --no-gh --aws --no-aws --docker --no-docker -w --workspace -r --read-write -R --read-only -e --env --completion" -- "$cur") )
 }
 complete -F _sbz sbz
 """
 
 ZSH_COMPLETION = r"""#compdef sbz
-# sbz zsh completion — add to ~/.zshrc: eval "$(sbz completion zsh)"
+# sbz zsh completion — add to ~/.zshrc: eval "$(sbz --completion zsh)"
 _sbz() {
-    local context state state_descr line
-    typeset -A opt_args
-
     _arguments -C \
         '(-h --help)'{-h,--help}'[show help]' \
         '(-V --version)'{-V,--version}'[show version]' \
@@ -61,26 +54,16 @@ _sbz() {
         '--docker[Docker socket access]' \
         '--no-docker[block Docker socket]' \
         '(-w --workspace)'{-w,--workspace}'[workspace directory]:dir:_files -/' \
-        '(-rw --read-write)'{-rw,--read-write}'[mount directory as read-write]:dir:_files -/' \
-        '(-ro --read-only)'{-ro,--read-only}'[mount directory as read-only]:dir:_files -/' \
+        '(-r --read-write)'{-r,--read-write}'[mount directory as read-write]:dir:_files -/' \
+        '(-R --read-only)'{-R,--read-only}'[mount directory as read-only]:dir:_files -/' \
         '(-e --env)'{-e,--env}'[pass environment variable]:var:' \
-        '1:subcommand:(completion)' \
-        '*:: :->args' && return
-
-    case $state in
-        args)
-            if [[ "${line[1]}" == completion ]]; then
-                _values 'shell' 'bash[bash completion]' 'zsh[zsh completion]' 'fish[fish completion]'
-            else
-                _files
-            fi
-            ;;
-    esac
+        '--completion[print shell completion script]:shell:(bash zsh fish)' \
+        '*::command:_normal'
 }
 compdef _sbz sbz
 """
 
-FISH_COMPLETION = r"""# sbz fish completion — add to ~/.config/fish/config.fish: sbz completion fish | source
+FISH_COMPLETION = r"""# sbz fish completion — add to ~/.config/fish/config.fish: sbz --completion fish | source
 complete -c sbz -f
 complete -c sbz -s h -l help -d 'show help'
 complete -c sbz -s V -l version -d 'show version'
@@ -94,21 +77,20 @@ complete -c sbz -l no-aws -d 'hide ~/.aws'
 complete -c sbz -l docker -d 'Docker socket access'
 complete -c sbz -l no-docker -d 'block Docker socket'
 complete -c sbz -s w -l workspace -r -a '(__fish_print_directories)' -d 'workspace directory'
-complete -c sbz -s rw -l read-write -r -a '(__fish_print_directories)' -d 'mount directory as read-write'
-complete -c sbz -s ro -l read-only -r -a '(__fish_print_directories)' -d 'mount directory as read-only'
+complete -c sbz -s r -l read-write -r -a '(__fish_print_directories)' -d 'mount directory as read-write'
+complete -c sbz -s R -l read-only -r -a '(__fish_print_directories)' -d 'mount directory as read-only'
 complete -c sbz -s e -l env -x -d 'pass environment variable'
-complete -c sbz -n '__fish_use_subcommand' -a completion -d 'generate completion script'
-complete -c sbz -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish'
+complete -c sbz -l completion -x -a 'bash zsh fish' -d 'print shell completion script'
 """
 
-COMPLETION_USAGE = """usage: sbz completion {bash|zsh|fish}
+COMPLETION_USAGE = """usage: sbz --completion {bash|zsh|fish}
 
 Generate shell completion script (print to stdout).
 
 examples:
-  eval "$(sbz completion bash)"    # bash (~/.bashrc)
-  eval "$(sbz completion zsh)"     # zsh (~/.zshrc)
-  sbz completion fish | source     # fish (config.fish)"""
+  eval "$(sbz --completion bash)"    # bash (~/.bashrc)
+  eval "$(sbz --completion zsh)"     # zsh (~/.zshrc)
+  sbz --completion fish | source     # fish (config.fish)"""
 
 
 def handle_completion(args: list[str]) -> None:
@@ -124,5 +106,5 @@ def handle_completion(args: list[str]) -> None:
         else:
             print(FISH_COMPLETION, end="")
         sys.exit(0)
-    print(f"sbz: error: usage: sbz completion {{{'|'.join(SHELLS)}}}", file=sys.stderr)
+    print(f"sbz: error: usage: sbz --completion {{{'|'.join(SHELLS)}}}", file=sys.stderr)
     sys.exit(1)

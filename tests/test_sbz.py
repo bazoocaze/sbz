@@ -81,3 +81,46 @@ def test_build_env_passes_only_nonempty(monkeypatch):
     env = sbz.build_env(["SBZ_TEST_SET", "SBZ_TEST_UNSET"])
     assert has(env, "--setenv", "SBZ_TEST_SET", "value")
     assert "SBZ_TEST_UNSET" not in env
+
+
+def parse(argv):
+    return sbz.build_parser().parse_args(argv)
+
+
+def test_parser_stops_at_first_positional():
+    opts, command = parse(["ls", "-la"])
+    assert command == ["ls", "-la"]
+    assert not opts.verbose
+
+
+def test_parser_options_before_command():
+    opts, command = parse(["-v", "-w", "/tmp", "ls", "-la"])
+    assert opts.verbose and opts.workspace == "/tmp"
+    assert command == ["ls", "-la"]
+
+
+def test_parser_bundled_and_attached_values():
+    opts, command = parse(["-vw", "/tmp", "true"])
+    assert opts.verbose and opts.workspace == "/tmp"
+    assert command == ["true"]
+
+
+def test_parser_double_dash_literal():
+    _, command = parse(["--", "-la"])
+    assert command == ["-la"]
+
+
+def test_parser_flag_after_command_goes_to_command():
+    opts, command = parse(["ls", "--no-net"])
+    assert command == ["ls", "--no-net"]
+    assert opts.network is True
+
+
+def test_parser_read_write_and_read_only():
+    opts, _ = parse(["-r", "/a", "-R", "/b", "true"])
+    assert opts.read_write == ["/a"] and opts.read_only == ["/b"]
+
+
+def test_parser_completion_option():
+    opts, command = parse(["--completion", "bash"])
+    assert opts.completion == "bash" and command == []

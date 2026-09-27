@@ -16,7 +16,7 @@ sbz --no-net curl example.com           # no network
 sbz --no-gh git push                    # block SSH agent
 sbz --aws aws s3 ls                     # access AWS credentials
 sbz --docker docker ps                  # access Docker socket
-sbz -rw /tmp/data python train.py       # extra rw mount
+sbz -r /tmp/data python train.py        # extra rw mount
 sbz -e API_KEY -w /proj node app.js     # pass env var
 ```
 
@@ -27,8 +27,8 @@ sbz -e API_KEY -w /proj node app.js     # pass env var
   -V, --version          show version
   -v, --verbose          show bwrap arguments
   -w, --workspace DIR    workspace directory (default: $PWD)
-  -rw, --read-write DIR  mount directory as read-write
-  -ro, --read-only DIR   mount directory as read-only
+  -r, --read-write DIR   mount directory as read-write
+  -R, --read-only DIR    mount directory as read-only
   -e, --env VAR          pass environment variable (can repeat)
 
 flags (default shown):
@@ -36,6 +36,8 @@ flags (default shown):
   --gh / --no-gh         SSH agent forwarding    [default: --gh]
   --aws / --no-aws       ~/.aws read-only        [default: --no-aws]
   --docker / --no-docker Docker socket access    [default: --no-docker]
+
+  --completion SHELL     print completion script (bash/zsh/fish)
 ```
 
 ## Environment
@@ -50,12 +52,12 @@ flags (default shown):
 ## Completion
 
 ```bash
-eval "$(sbz completion bash)"    # bash (~/.bashrc)
-eval "$(sbz completion zsh)"     # zsh (~/.zshrc)
-sbz completion fish | source     # fish (config.fish)
+eval "$(sbz --completion bash)"    # bash (~/.bashrc)
+eval "$(sbz --completion zsh)"     # zsh (~/.zshrc)
+sbz --completion fish | source     # fish (config.fish)
 ```
 
-Note: `sbz -- CMD` runs `CMD` literally (escape hatch for a binary named `completion`).
+Note: `sbz -- CMD` runs `CMD` literally (for commands starting with `-`).
 
 ## Development
 
