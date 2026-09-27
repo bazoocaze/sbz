@@ -13,8 +13,8 @@ Review of `sbz` (bubblewrap wrapper). Findings below; fixes tracked in this task
 ## Robustness / design
 
 - [ ] Manual parser (sbz.py:144) does not handle combined short flags (`-vw dir`), attached `-eVAR`, or `sbz -v completion ...`. Deferred.
-- [ ] `handle_completion` lacks explicit `return`/`sys.exit` at caller (sbz.py:247).
-- [ ] Inconsistent exit codes (manual help 0/1 vs argparse 2).
+- [x] `handle_completion` lacks explicit `return`/`sys.exit` at caller (sbz.py:247).
+- [x] Inconsistent exit codes (manual help 0/1 vs argparse 2). No-command now exits 2.
 
 ## Packaging / repo
 
@@ -24,8 +24,8 @@ Review of `sbz` (bubblewrap wrapper). Findings below; fixes tracked in this task
 
 ## Security defaults
 
-- [ ] `--gh` enabled by default forwards the SSH agent. Deferred (document only).
-- [ ] `--docker` mounts the Docker socket (trivial escape); document risk. Deferred.
+- [x] `--gh` enabled by default forwards the SSH agent. Documented in help/README.
+- [x] `--docker` mounts the Docker socket (trivial escape); document risk. Documented in help/README.
 
 ## Tests (minimal, non-exhaustive)
 

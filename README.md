@@ -42,6 +42,11 @@ flags (default shown):
 
 - `SBZ_WORKSPACE` - default workspace (overrides $PWD)
 
+## Security
+
+- `--gh` (default on) forwards your SSH agent to the sandbox, so sandboxed commands can use your keys.
+- `--docker` mounts the Docker socket, granting root-equivalent access to the host.
+
 ## Completion
 
 ```bash

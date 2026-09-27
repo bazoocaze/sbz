@@ -23,7 +23,7 @@ def get_version() -> str:
         # importlib.resources for package metadata
         from importlib.metadata import version as get_pkg_version
         return get_pkg_version("sbz")
-    except Exception:
+    except Exception:  # noqa: BLE001
         return "?.?.?"
 
 
@@ -238,6 +238,10 @@ examples:
 
 note: `sbz -- CMD` runs CMD literally (use for a binary named `completion`).
 
+security notes:
+  --gh     forwards the SSH agent to the sandbox (keys usable inside).
+  --docker mounts the Docker socket (root-equivalent host access).
+
 environment:
   SBZ_WORKSPACE   default workspace (overrides $PWD)""")
     sys.exit(exit_code)
@@ -246,11 +250,12 @@ environment:
 def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "completion":
         handle_completion(sys.argv[2:])
+        return
 
     args, command = parse_args()
 
     if not command:
-        show_help(exit_code=1)
+        show_help(exit_code=2)
 
     # Resolve workspace
     workspace = args.workspace or os.environ.get("SBZ_WORKSPACE") or os.getcwd()
