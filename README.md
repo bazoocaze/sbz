@@ -11,14 +11,34 @@ uv tool install git+https://github.com/bazoocaze/sbz
 ## Usage
 
 ```bash
-sbz ls -la                              # sandbox with network
-sbz --no-net curl example.com           # no network
-sbz --no-gh git push                    # block SSH agent
-sbz --aws aws s3 ls                     # access AWS credentials
-sbz --docker docker ps                  # access Docker socket
-sbz -r /tmp/data python train.py        # extra rw mount
-sbz -e API_KEY -w /proj node app.js     # pass env var
+sbz ls -la                              # baseline sandbox, with network
+sbz @dev mvn compile                    # agent + known_hosts + ~/.m2/settings.xml
+sbz @gh git push                        # SSH agent forwarding
+sbz @aws aws s3 ls                      # ~/.aws
+sbz @docker docker ps                   # Docker socket
+sbz @ssh ssh user@host                  # ~/.ssh keys
+sbz @dev,aws --no-net env              # profiles are unioned
+sbz @default -r ~/.m2/settings.xml mvn -V   # one-off grant
+sbz -w /tmp/data python train.py        # one-off grant
 ```
+
+Profiles are optional, comma-separated, and must come first (`@default` when omitted).
+Flags are shorthand for a single cap and override the profile. Workspace is `$PWD` (or `SBZ_WORKSPACE`).
+
+## Model
+
+Baseline is always applied (system paths ro, home ro, workspace rw, `~/.cache` tmpfs, global rw dirs, network, and `deny` on `~/.ssh` and `~/.aws`). Profiles are **grants only** — exceptions to the baseline, never inheritance.
+
+## Profiles
+
+| profile | grants |
+|---|---|
+| `@default` | – |
+| `@dev` | read `~/.ssh/known_hosts`, read `~/.m2/settings.xml`, SSH agent |
+| `@gh` | read `~/.ssh/known_hosts`, SSH agent |
+| `@aws` | read `~/.aws` |
+| `@docker` | Docker socket |
+| `@ssh` | read `~/.ssh` |
 
 ## Options
 
@@ -26,18 +46,10 @@ sbz -e API_KEY -w /proj node app.js     # pass env var
   -h, --help             show this help
   -V, --version          show version
   -v, --verbose          show bwrap arguments
-  -w, --workspace DIR    workspace directory (default: $PWD)
-  -r, --read-write DIR   mount directory as read-write
-  -R, --read-only DIR    mount directory as read-only
-  -e, --env VAR          pass environment variable (can repeat)
-
-flags (default shown):
-  --net / --no-net       network access          [default: --net]
-  --gh / --no-gh         SSH agent forwarding    [default: --gh]
-  --aws / --no-aws       ~/.aws read-only        [default: --no-aws]
-  --docker / --no-docker Docker socket access    [default: --no-docker]
-
-  --completion SHELL     print completion script (bash/zsh/fish)
+  -r, --read DIR         grant read (ro-bind)
+  -w, --write DIR        grant write (bind)
+  --no-net               disable network access
+  --completion SHELL     print shell completion script (bash/zsh/fish)
 ```
 
 ## Environment
@@ -46,8 +58,8 @@ flags (default shown):
 
 ## Security
 
-- `--gh` (default on) forwards your SSH agent to the sandbox, so sandboxed commands can use your keys.
-- `--docker` mounts the Docker socket, granting root-equivalent access to the host.
+- `@dev` / `@gh` forward your SSH agent to the sandbox, so sandboxed commands can use your keys.
+- `@docker` mounts the Docker socket, granting root-equivalent access to the host.
 
 ## Completion
 
@@ -65,3 +77,23 @@ Note: `sbz -- CMD` runs `CMD` literally (for commands starting with `-`).
 ./run-tests.sh          # run tests (pytest)
 ./run-app.sh --version  # run from source
 ```
+
+## Permissions
+
+`–` = nothing beyond the baseline; `deny` = empty tmpfs, `read` = ro-bind, `write` = bind.
+
+| permissão | flags | global | @default | @dev | @gh | @aws | @docker | @ssh |
+|---|---|---|---|---|---|---|---|---|
+| system paths (ro) | – | ✔ | – | – | – | – | – | – |
+| home (ro) | – | ✔ | – | – | – | – | – | – |
+| workspace (rw) | – | ✔ | – | – | – | – | – | – |
+| `~/.cache` (tmpfs) | – | ✔ | – | – | – | – | – | – |
+| `~/.pi/agent` (rw) | – | ✔ | – | – | – | – | – | – |
+| `~/.local/share/{zoxide,uv,opencode}` (rw) | – | ✔ | – | – | – | – | – | – |
+| network | `--no-net` | ✔ | – | – | – | – | – | – |
+| `~/.ssh` keys | `-r/-w` | deny | – | – | – | – | – | read |
+| `~/.ssh/known_hosts` (ro) | `-r/-w` | – | – | ✔ | ✔ | – | – | – |
+| `~/.aws` | `-r/-w` | deny | – | – | – | read | – | – |
+| `~/.m2/settings.xml` (ro) | `-r/-w` | – | – | ✔ | – | – | – | – |
+| SSH agent | – | – | – | ✔ | ✔ | – | – | – |
+| Docker socket | – | – | – | – | – | – | write | – |

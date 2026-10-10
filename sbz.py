@@ -5,6 +5,7 @@ import optparse
 import os
 import sys
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 
 from sbz_completion import handle_completion
@@ -29,13 +30,60 @@ def get_version() -> str:
 
 VERSION = get_version()
 
-DEFAULT_ENV = ["HOME", "USER", "SHELL", "TERM", "LANG", "LC_ALL", "PATH", "PWD"]
+DEFAULT_ENV = ["HOME", "USER", "SHELL", "TERM", "LANG", "LC_ALL", "PATH"]
 
 # Filesystem paths mounted read-only (must exist on host)
 RO_PATHS = ["/usr", "/bin", "/sbin", "/etc", "/lib", "/lib64", "/var"]
 
 # Optional paths mounted read-only if they exist
 OPTIONAL_RO = ["/opt", "/nix", "/boot", "/sys"]
+
+# Always applied, no profile needed
+GLOBAL_RW = [".pi/agent", ".local/share/zoxide", ".local/share/uv", ".local/share/opencode"]
+
+
+@dataclass(frozen=True)
+class Cap:
+    """A permission: op applied to a resource (path, env var, or network)."""
+
+    op: str
+    target: str
+
+
+def read(target: str) -> Cap:
+    return Cap("read", target)
+
+
+def write(target: str) -> Cap:
+    return Cap("write", target)
+
+
+def deny(target: str) -> Cap:
+    return Cap("deny", target)
+
+
+def agent() -> Cap:
+    return Cap("agent", "")
+
+
+def net() -> Cap:
+    return Cap("net", "network")
+
+
+def nonet() -> Cap:
+    return Cap("nonet", "network")
+
+
+PROTECTIONS = [deny("~/.ssh"), deny("~/.aws")]
+
+PROFILES = {
+    "default": [],
+    "dev": [read("~/.ssh/known_hosts"), read("~/.m2/settings.xml"), agent()],
+    "gh": [read("~/.ssh/known_hosts"), agent()],
+    "aws": [read("~/.aws")],
+    "docker": [write("/run/docker.sock")],
+    "ssh": [read("~/.ssh")],
+}
 
 
 def die(msg: str, code: int = 1) -> None:
@@ -47,8 +95,61 @@ def exists(path: str) -> bool:
     return Path(path).exists()
 
 
-def build_mounts(workspace: str, extra_rw: list[str], extra_ro: list[str], aws: bool = False) -> list[str]:
-    """Build bwrap mount arguments."""
+def expand(target: str) -> str:
+    """Resolve ~ in a cap target."""
+    if target.startswith("~"):
+        return os.environ["HOME"] + target[1:]
+    return target
+
+
+def cap_key(cap: Cap) -> str:
+    """One entry per resource, so the last cap applied wins."""
+    if cap.op in ("net", "nonet"):
+        return "net"
+    if cap.op == "agent":
+        return "agent"
+    return f"path:{expand(cap.target)}"
+
+
+def parse_profiles(argv: list[str]) -> tuple[list[str], list[str]]:
+    """Consume leading @profile tokens; the rest is flags and the command."""
+    profiles = []
+    while argv and argv[0].startswith("@"):
+        for name in argv[0][1:].split(","):
+            if name not in PROFILES:
+                die(f"unknown profile: {name} (valid: {', '.join(sorted(PROFILES))})")
+            profiles.append(name)
+        argv.pop(0)
+    return profiles, argv
+
+
+def flag_caps(opts) -> list[Cap]:
+    """Flags are shorthand for caps; they override the profile."""
+    caps = []
+    if opts.no_net:
+        caps.append(nonet())
+    for d in opts.read:
+        caps.append(read(d))
+    for d in opts.write:
+        caps.append(write(d))
+    return caps
+
+
+def resolve(profiles: list[str], flags: list[Cap]) -> list[Cap]:
+    """Baseline protections, then profile grants, then flags (last wins per resource)."""
+    caps = {}
+    for cap in [net()] + PROTECTIONS:
+        caps[cap_key(cap)] = cap
+    for name in profiles:
+        for cap in PROFILES[name]:
+            caps[cap_key(cap)] = cap
+    for cap in flags:
+        caps[cap_key(cap)] = cap
+    return list(caps.values())
+
+
+def build_args(caps: list[Cap], workspace: str) -> list[str]:
+    """Build bwrap arguments from resolved caps."""
     args = [
         "--die-with-parent",
         "--hostname", "sandbox",
@@ -87,93 +188,81 @@ def build_mounts(workspace: str, extra_rw: list[str], extra_ro: list[str], aws: 
     if exists(f"{home}/.cache"):
         args += ["--tmpfs", f"{home}/.cache"]
 
-    # Diretórios sensíveis → tmpfs vazio (protegidos)
-    sensitive = [".ssh"] if aws else [".ssh", ".aws"]
-    for d in sensitive:
-        if exists(f"{home}/{d}"):
-            args += ["--tmpfs", f"{home}/{d}"]
-
-    # ~/.aws → read-only do host (quando --aws)
-    if aws:
-        aws_dir = f"{home}/.aws"
-        if exists(aws_dir):
-            args += ["--ro-bind", aws_dir, aws_dir]
-
-    # ~/.ssh/known_hosts → read-only do host (evita prompt de host key)
-    kh = f"{home}/.ssh/known_hosts"
-    if exists(kh):
-        args += ["--ro-bind", kh, kh]
-
-    # ~/.pi/agent → read-write (pi settings, sessions, etc)
-    pi_agent = f"{home}/.pi/agent"
-    if exists(pi_agent):
-        args += ["--bind", pi_agent, pi_agent]
-
-    # ~/.local/share writable subdirs (bind — persiste no host)
-    for d in ["zoxide", "uv", "opencode"]:
-        p = f"{home}/.local/share/{d}"
+    # Global writable grants
+    for d in GLOBAL_RW:
+        p = f"{home}/{d}"
         if exists(p):
             args += ["--bind", p, p]
 
-    # Additional mounts
-    for d in extra_rw:
-        if not exists(d):
-            die(f"directory not found: {d}")
-        real = str(Path(d).resolve())
-        args += ["--bind", real, real]
+    # Caps in insertion order: protections first, then grants
+    for cap in caps:
+        if cap.op == "agent":
+            sock = os.environ.get("SSH_AUTH_SOCK")
+            if sock and exists(sock):
+                args += ["--setenv", "SSH_AUTH_SOCK", sock, "--bind", sock, sock]
+            continue
+        if cap_key(cap) == "net":
+            continue
+        path = expand(cap.target)
+        if not path or not exists(path):
+            continue
+        if cap.op == "deny":
+            if Path(path).is_dir():
+                args += ["--tmpfs", path]
+            else:
+                args += ["--ro-bind", "/dev/null", path]
+        elif cap.op == "read":
+            args += ["--ro-bind", path, path]
+        else:
+            args += ["--bind", path, path]
 
-    for d in extra_ro:
-        if not exists(d):
-            die(f"directory not found: {d}")
-        real = str(Path(d).resolve())
-        args += ["--ro-bind", real, real]
+    # Chdir to workspace
+    args += ["--chdir", workspace, "--setenv", "PWD", workspace]
 
-    return args
+    # Network mode
+    net_cap = next((c for c in caps if cap_key(c) == "net"), net())
+    if net_cap.op == "net":
+        # Share host network, isolate other namespaces
+        args += ["--unshare-pid", "--unshare-uts", "--unshare-ipc", "--unshare-user"]
+    else:
+        # Full isolation including network
+        args += ["--unshare-all"]
 
-
-def build_env(extra_vars: list[str]) -> list[str]:
-    """Build --setenv arguments for essential + requested env vars."""
-    args = []
-    for var in DEFAULT_ENV + extra_vars:
+    # Environment
+    for var in DEFAULT_ENV:
         val = os.environ.get(var)
         if val:
             args += ["--setenv", var, val]
+
     return args
 
 
 def build_parser() -> optparse.OptionParser:
     parser = optparse.OptionParser(
         prog="sbz",
-        usage="sbz [OPTIONS] [--] COMMAND [ARGS...]",
+        usage="sbz [@profiles] [OPTIONS] [--] COMMAND [ARGS...]",
         description="Sandboxed command execution via bubblewrap.",
         epilog=(
-            "security: --gh forwards your SSH agent; "
-            "--docker grants root-equivalent host access."
+            "profiles: @default, @dev, @gh, @aws, @docker, @ssh (comma-separated, default @default)\n"
+            "flags are shorthand for caps and override the profile.\n"
+            "security: @gh/@dev forward your SSH agent; @docker grants root-equivalent host access."
         ),
     )
     parser.version = f"sbz v{VERSION}"
     parser.add_option("-V", "--version", action="version", help="show version")
     parser.add_option("-v", "--verbose", action="store_true", help="show bwrap arguments")
-    parser.add_option("--net", dest="network", action="store_true", default=True, help="network access [default]")
-    parser.add_option("--no-net", dest="network", action="store_false", help="disable network access")
-    parser.add_option("--gh", dest="gh", action="store_true", default=True, help="SSH agent forwarding [default]")
-    parser.add_option("--no-gh", dest="gh", action="store_false", help="block SSH agent")
-    parser.add_option("--aws", dest="aws", action="store_true", default=False, help="~/.aws read-only")
-    parser.add_option("--no-aws", dest="aws", action="store_false", help="hide ~/.aws [default]")
-    parser.add_option("--docker", dest="docker", action="store_true", default=False, help="Docker socket access")
-    parser.add_option("--no-docker", dest="docker", action="store_false", help="block Docker socket [default]")
-    parser.add_option("-w", "--workspace", metavar="DIR", help="workspace directory (default: $PWD)")
-    parser.add_option("-r", "--read-write", action="append", dest="read_write", default=[], metavar="DIR", help="mount directory as read-write")
-    parser.add_option("-R", "--read-only", action="append", dest="read_only", default=[], metavar="DIR", help="mount directory as read-only")
-    parser.add_option("-e", "--env", action="append", default=[], metavar="VAR", help="pass environment variable (repeatable)")
+    parser.add_option("--no-net", dest="no_net", action="store_true", help="disable network access")
+    parser.add_option("-r", "--read", action="append", default=[], metavar="DIR", help="grant read (ro-bind)")
+    parser.add_option("-w", "--write", action="append", default=[], metavar="DIR", help="grant write (bind)")
     parser.add_option("--completion", metavar="SHELL", help="print shell completion script (bash/zsh/fish)")
     parser.disable_interspersed_args()
     return parser
 
 
 def main() -> None:
+    profiles, argv = parse_profiles(sys.argv[1:])
     parser = build_parser()
-    opts, command = parser.parse_args(sys.argv[1:])
+    opts, command = parser.parse_args(argv)
 
     if opts.completion:
         handle_completion([opts.completion])
@@ -183,50 +272,19 @@ def main() -> None:
         parser.error("no command given")
 
     # Resolve workspace
-    workspace = opts.workspace or os.environ.get("SBZ_WORKSPACE") or os.getcwd()
+    workspace = os.environ.get("SBZ_WORKSPACE") or os.getcwd()
     if not exists(workspace):
         die(f"workspace not found: {workspace}")
     workspace = str(Path(workspace).resolve())
 
-    # Build bwrap arguments
-    bwrap = build_mounts(workspace, opts.read_write, opts.read_only, aws=opts.aws)
-
-    # Chdir to workspace
-    bwrap += ["--chdir", workspace]
-
-    # Network mode
-    if opts.network:
-        # Share host network, isolate other namespaces
-        bwrap += ["--unshare-pid", "--unshare-uts", "--unshare-ipc", "--unshare-user"]
-    else:
-        # Full isolation including network
-        bwrap += ["--unshare-all"]
-
-    # Environment
-    extra_env = list(opts.env)
-    if opts.gh:
-        extra_env.append("SSH_AUTH_SOCK")
-    bwrap += build_env(extra_env)
-
-    # --gh: monta o socket do SSH agent como rw
-    if opts.gh:
-        sock = os.environ.get("SSH_AUTH_SOCK", "")
-        if sock and exists(sock):
-            bwrap += ["--bind", sock, sock]
-
-    # --no-gh: limpa SSH_AUTH_SOCK
-    if not opts.gh:
-        bwrap += ["--setenv", "SSH_AUTH_SOCK", ""]
-
-    # --docker: monta o socket no path real e aponta DOCKER_HOST
-    docker_sock = "/run/docker.sock"
-    if opts.docker and exists(docker_sock):
-        bwrap += ["--bind", docker_sock, docker_sock]
-        bwrap += ["--setenv", "DOCKER_HOST", "unix:///run/docker.sock"]
+    flags = flag_caps(opts)
+    caps = resolve(profiles, flags)
+    bwrap = build_args(caps, workspace)
 
     # verbose
     if opts.verbose:
-        print(f"sbz: workspace={workspace} net={opts.network} docker={opts.docker}", file=sys.stderr)
+        print(f"sbz: profiles={','.join(profiles) or 'default'} workspace={workspace}", file=sys.stderr)
+        print(f"sbz: caps {' '.join(f'{c.op}({c.target})' for c in caps)}", file=sys.stderr)
         print(f"sbz: bwrap {' '.join(bwrap)} {' '.join(command)}", file=sys.stderr)
 
     os.execvp("bwrap", ["bwrap"] + bwrap + command)

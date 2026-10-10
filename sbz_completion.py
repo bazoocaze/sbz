@@ -10,13 +10,14 @@ _sbz() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
+    if [[ "$cur" == @* ]]; then
+        COMPREPLY=( $(compgen -W "@default @dev @gh @aws @docker @ssh" -- "$cur") )
+        return 0
+    fi
+
     case "$prev" in
-        -w|--workspace|-r|--read-write|-R|--read-only)
+        -r|--read|-w|--write)
             COMPREPLY=( $(compgen -d -- "$cur") )
-            return 0
-            ;;
-        -e|--env)
-            COMPREPLY=( $(compgen -v -- "$cur") )
             return 0
             ;;
         --completion)
@@ -33,7 +34,7 @@ _sbz() {
         fi
     done
 
-    COMPREPLY=( $(compgen -W "-h --help -V --version -v --verbose --net --no-net --gh --no-gh --aws --no-aws --docker --no-docker -w --workspace -r --read-write -R --read-only -e --env --completion" -- "$cur") )
+    COMPREPLY=( $(compgen -W "-h --help -V --version -v --verbose --no-net -r --read -w --write --completion" -- "$cur") )
 }
 complete -F _sbz sbz
 """
@@ -45,19 +46,11 @@ _sbz() {
         '(-h --help)'{-h,--help}'[show help]' \
         '(-V --version)'{-V,--version}'[show version]' \
         '(-v --verbose)'{-v,--verbose}'[show bwrap arguments]' \
-        '--net[network access]' \
         '--no-net[no network access]' \
-        '--gh[SSH agent forwarding]' \
-        '--no-gh[block SSH agent]' \
-        '--aws[~/.aws read-only]' \
-        '--no-aws[hide ~/.aws]' \
-        '--docker[Docker socket access]' \
-        '--no-docker[block Docker socket]' \
-        '(-w --workspace)'{-w,--workspace}'[workspace directory]:dir:_files -/' \
-        '(-r --read-write)'{-r,--read-write}'[mount directory as read-write]:dir:_files -/' \
-        '(-R --read-only)'{-R,--read-only}'[mount directory as read-only]:dir:_files -/' \
-        '(-e --env)'{-e,--env}'[pass environment variable]:var:' \
+        '(-r --read)'{-r,--read}'[grant read]:dir:_files -/' \
+        '(-w --write)'{-w,--write}'[grant write]:dir:_files -/' \
         '--completion[print shell completion script]:shell:(bash zsh fish)' \
+        '1:profile:("@default" "@dev" "@gh" "@aws" "@docker" "@ssh")' \
         '*::command:_normal'
 }
 compdef _sbz sbz
@@ -68,19 +61,11 @@ complete -c sbz -f
 complete -c sbz -s h -l help -d 'show help'
 complete -c sbz -s V -l version -d 'show version'
 complete -c sbz -s v -l verbose -d 'show bwrap arguments'
-complete -c sbz -l net -d 'network access'
 complete -c sbz -l no-net -d 'no network access'
-complete -c sbz -l gh -d 'SSH agent forwarding'
-complete -c sbz -l no-gh -d 'block SSH agent'
-complete -c sbz -l aws -d '~/.aws read-only'
-complete -c sbz -l no-aws -d 'hide ~/.aws'
-complete -c sbz -l docker -d 'Docker socket access'
-complete -c sbz -l no-docker -d 'block Docker socket'
-complete -c sbz -s w -l workspace -r -a '(__fish_print_directories)' -d 'workspace directory'
-complete -c sbz -s r -l read-write -r -a '(__fish_print_directories)' -d 'mount directory as read-write'
-complete -c sbz -s R -l read-only -r -a '(__fish_print_directories)' -d 'mount directory as read-only'
-complete -c sbz -s e -l env -x -d 'pass environment variable'
+complete -c sbz -s r -l read -r -a '(__fish_print_directories)' -d 'grant read'
+complete -c sbz -s w -l write -r -a '(__fish_print_directories)' -d 'grant write'
 complete -c sbz -l completion -x -a 'bash zsh fish' -d 'print shell completion script'
+complete -c sbz -f -a '@default @dev @gh @aws @docker @ssh' -d 'profile'
 """
 
 COMPLETION_USAGE = """usage: sbz --completion {bash|zsh|fish}

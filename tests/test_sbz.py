@@ -1,4 +1,4 @@
-"""Minimal unit tests for sbz mount and env builders."""
+"""Minimal unit tests for sbz cap resolution and bwrap arg builder."""
 
 import pytest
 
@@ -25,102 +25,156 @@ def make_home(tmp_path, *subdirs):
     return home
 
 
-def test_aws_flag_mounts_aws_read_only(tmp_path, monkeypatch):
+def build(profiles, flags=(), workspace=None, tmp_path=None):
+    caps = sbz.resolve(profiles, list(flags))
+    return sbz.build_args(caps, str(workspace or tmp_path))
+
+
+def test_default_is_baseline_only(tmp_path, monkeypatch):
     home = make_home(tmp_path, ".aws", ".ssh")
     monkeypatch.setenv("HOME", str(home))
-    mounts = sbz.build_mounts(str(tmp_path), [], [], aws=True)
-    aws = f"{home}/.aws"
-    assert has(mounts, "--ro-bind", aws, aws)
-    assert not has(mounts, "--tmpfs", aws)
+    mounts = build([], tmp_path=tmp_path)
+    assert has(mounts, "--tmpfs", f"{home}/.aws")
+    assert has(mounts, "--tmpfs", f"{home}/.ssh")
+    assert has(mounts, "--unshare-pid")
 
 
-def test_no_aws_hides_aws_dir(tmp_path, monkeypatch):
+def test_aws_profile_grants_aws(tmp_path, monkeypatch):
     home = make_home(tmp_path, ".aws", ".ssh")
     monkeypatch.setenv("HOME", str(home))
-    mounts = sbz.build_mounts(str(tmp_path), [], [], aws=False)
-    aws = f"{home}/.aws"
-    assert has(mounts, "--tmpfs", aws)
-    assert not has(mounts, "--ro-bind", aws, aws)
+    mounts = build(["aws"], tmp_path=tmp_path)
+    assert has(mounts, "--ro-bind", f"{home}/.aws", f"{home}/.aws")
+    assert not has(mounts, "--tmpfs", f"{home}/.aws")
 
 
-def test_ssh_always_protected(tmp_path, monkeypatch):
+def test_ssh_profile_grants_keys(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ".ssh", ".aws")
+    monkeypatch.setenv("HOME", str(home))
+    mounts = build(["ssh"], tmp_path=tmp_path)
+    assert has(mounts, "--ro-bind", f"{home}/.ssh", f"{home}/.ssh")
+    assert has(mounts, "--tmpfs", f"{home}/.aws")
+
+
+def test_gh_profile_grants_agent(tmp_path, monkeypatch):
     home = make_home(tmp_path, ".ssh")
+    (home / ".ssh" / "known_hosts").write_text("")
+    sock = tmp_path / "agent.sock"
+    sock.write_text("")
     monkeypatch.setenv("HOME", str(home))
-    for aws in (True, False):
-        mounts = sbz.build_mounts(str(tmp_path), [], [], aws=aws)
-        assert has(mounts, "--tmpfs", f"{home}/.ssh")
+    monkeypatch.setenv("SSH_AUTH_SOCK", str(sock))
+    mounts = build(["gh"], tmp_path=tmp_path)
+    assert has(mounts, "--setenv", "SSH_AUTH_SOCK", str(sock))
+    assert has(mounts, "--bind", str(sock), str(sock))
+    assert has(mounts, "--ro-bind", f"{home}/.ssh/known_hosts", f"{home}/.ssh/known_hosts")
+    assert not has(mounts, "--ro-bind", f"{home}/.m2/settings.xml", f"{home}/.m2/settings.xml")
+
+
+def test_dev_grants_agent_and_m2_settings(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ".m2", ".ssh")
+    (home / ".m2" / "settings.xml").write_text("")
+    monkeypatch.setenv("HOME", str(home))
+    caps = sbz.resolve(["dev"], [])
+    assert sbz.agent() in caps
+    args = sbz.build_args(caps, str(tmp_path))
+    assert has(args, "--ro-bind", f"{home}/.m2/settings.xml", f"{home}/.m2/settings.xml")
+
+
+def test_docker_profile_grants_socket(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(make_home(tmp_path)))
+    args = build(["docker"], tmp_path=tmp_path)
+    assert has(args, "--bind", "/run/docker.sock", "/run/docker.sock")
+
+
+def test_profiles_do_not_inherit(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ".aws", ".ssh")
+    monkeypatch.setenv("HOME", str(home))
+    caps = sbz.resolve(["aws"], [])
+    assert sbz.read("~/.aws") in caps
+    assert sbz.agent() not in caps
+    assert sbz.read("~/.ssh/known_hosts") not in caps
+
+
+def test_flag_overrides_profile(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ".aws")
+    monkeypatch.setenv("HOME", str(home))
+    opts = sbz.build_parser().parse_args(["-r", f"{home}/.aws", "true"])[0]
+    mounts = build(["default"], sbz.flag_caps(opts), tmp_path=tmp_path)
+    assert has(mounts, "--ro-bind", f"{home}/.aws", f"{home}/.aws")
+    assert not has(mounts, "--tmpfs", f"{home}/.aws")
 
 
 def test_workspace_bind_precedes_protections(tmp_path, monkeypatch):
     home = make_home(tmp_path, ".ssh")
     monkeypatch.setenv("HOME", str(home))
-    mounts = sbz.build_mounts(str(home), [], [], aws=False)
+    mounts = build([], workspace=home, tmp_path=tmp_path)
     ws = index_of(mounts, "--bind", str(home), str(home))
     ssh = index_of(mounts, "--tmpfs", f"{home}/.ssh")
     assert 0 <= ws < ssh
 
 
-def test_extra_rw_missing_dies(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    with pytest.raises(SystemExit):
-        sbz.build_mounts(str(tmp_path), ["/nonexistent-sbz-xyz"], [], aws=False)
+def test_no_net_uses_full_isolation(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(make_home(tmp_path)))
+    opts = sbz.build_parser().parse_args(["--no-net", "true"])[0]
+    mounts = build([], sbz.flag_caps(opts), tmp_path=tmp_path)
+    assert has(mounts, "--unshare-all")
 
 
-def test_extra_ro_existing_ro_binds(tmp_path, monkeypatch):
-    home = make_home(tmp_path)
+def test_deny_file_uses_dev_null(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ".m2")
+    (home / ".m2" / "settings.xml").write_text("")
     monkeypatch.setenv("HOME", str(home))
-    data = tmp_path / "data"
-    data.mkdir()
-    mounts = sbz.build_mounts(str(tmp_path), [], [str(data)], aws=False)
-    assert has(mounts, "--ro-bind", str(data), str(data))
+    args = build(["default"], [sbz.deny(f"{home}/.m2/settings.xml")], tmp_path=tmp_path)
+    assert has(args, "--ro-bind", "/dev/null", f"{home}/.m2/settings.xml")
 
 
-def test_build_env_passes_only_nonempty(monkeypatch):
-    monkeypatch.setenv("SBZ_TEST_SET", "value")
-    monkeypatch.delenv("SBZ_TEST_UNSET", raising=False)
-    env = sbz.build_env(["SBZ_TEST_SET", "SBZ_TEST_UNSET"])
-    assert has(env, "--setenv", "SBZ_TEST_SET", "value")
-    assert "SBZ_TEST_UNSET" not in env
+def test_missing_path_is_skipped_silently(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(make_home(tmp_path)))
+    args = build([], [sbz.write("/tmp/sbz-nope")], tmp_path=tmp_path)
+    assert not has(args, "/tmp/sbz-nope")
 
 
 def parse(argv):
-    return sbz.build_parser().parse_args(argv)
+    profiles, rest = sbz.parse_profiles(argv)
+    return profiles, sbz.build_parser().parse_args(rest)
+
+
+def test_parse_profiles_default():
+    profiles, (_, command) = parse(["ls", "-la"])
+    assert profiles == [] and command == ["ls", "-la"]
+
+
+def test_parse_profiles_comma_list():
+    profiles, (opts, command) = parse(["@dev,aws", "-v", "true"])
+    assert profiles == ["dev", "aws"]
+    assert opts.verbose and command == ["true"]
+
+
+def test_parse_profiles_unknown_dies():
+    with pytest.raises(SystemExit):
+        parse(["@nope", "true"])
+
+
+def test_profiles_only_at_start():
+    profiles, (_, command) = parse(["true", "@dev"])
+    assert profiles == [] and command == ["true", "@dev"]
 
 
 def test_parser_stops_at_first_positional():
-    opts, command = parse(["ls", "-la"])
+    _, (opts, command) = parse(["ls", "-la"])
     assert command == ["ls", "-la"]
-    assert not opts.verbose
+    assert not opts.no_net
 
 
-def test_parser_options_before_command():
-    opts, command = parse(["-v", "-w", "/tmp", "ls", "-la"])
-    assert opts.verbose and opts.workspace == "/tmp"
-    assert command == ["ls", "-la"]
-
-
-def test_parser_bundled_and_attached_values():
-    opts, command = parse(["-vw", "/tmp", "true"])
-    assert opts.verbose and opts.workspace == "/tmp"
-    assert command == ["true"]
+def test_parser_repeatable_flags():
+    _, (opts, _) = parse(["-r", "/a", "-w", "/b", "true"])
+    assert opts.read == ["/a"] and opts.write == ["/b"]
 
 
 def test_parser_double_dash_literal():
-    _, command = parse(["--", "-la"])
+    _, (_, command) = parse(["--", "-la"])
     assert command == ["-la"]
 
 
-def test_parser_flag_after_command_goes_to_command():
-    opts, command = parse(["ls", "--no-net"])
-    assert command == ["ls", "--no-net"]
-    assert opts.network is True
-
-
-def test_parser_read_write_and_read_only():
-    opts, _ = parse(["-r", "/a", "-R", "/b", "true"])
-    assert opts.read_write == ["/a"] and opts.read_only == ["/b"]
-
-
 def test_parser_completion_option():
-    opts, command = parse(["--completion", "bash"])
+    _, (opts, command) = parse(["--completion", "bash"])
     assert opts.completion == "bash" and command == []
