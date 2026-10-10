@@ -52,7 +52,13 @@ def test_ssh_profile_grants_keys(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     mounts = build(["ssh"], tmp_path=tmp_path)
     assert has(mounts, "--ro-bind", f"{home}/.ssh", f"{home}/.ssh")
+    assert not has(mounts, "--tmpfs", f"{home}/.ssh")
     assert has(mounts, "--tmpfs", f"{home}/.aws")
+
+
+def test_new_session_is_set(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(make_home(tmp_path)))
+    assert "--new-session" in build([], tmp_path=tmp_path)
 
 
 def test_gh_profile_grants_agent(tmp_path, monkeypatch):

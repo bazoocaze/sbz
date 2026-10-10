@@ -11,15 +11,15 @@ uv tool install git+https://github.com/bazoocaze/sbz
 ## Usage
 
 ```bash
-sbz ls -la                              # baseline sandbox, with network
-sbz @dev mvn compile                    # agent + known_hosts + ~/.m2/settings.xml
-sbz @gh git push                        # SSH agent forwarding
-sbz @aws aws s3 ls                      # ~/.aws
-sbz @docker docker ps                   # Docker socket
-sbz @ssh ssh user@host                  # ~/.ssh keys
-sbz @dev,aws --no-net env              # profiles are unioned
-sbz @default -r ~/.m2/settings.xml mvn -V   # one-off grant
-sbz -w /tmp/data python train.py        # one-off grant
+sbz ls -la                                  # baseline sandbox, with network
+sbz @dev mvn compile                        # agent + known_hosts + ~/.m2/settings.xml
+sbz @gh git push                            # SSH agent forwarding
+sbz @aws aws s3 ls                          # ~/.aws
+sbz @docker docker ps                       # Docker socket
+sbz @ssh ssh user@host                      # ~/.ssh keys
+sbz @dev,aws --no-net env                   # profiles are unioned
+sbz @default -r ~/.m2/settings.xml mvn -version  # one-off grant
+sbz -w /tmp/data python train.py            # one-off grant
 ```
 
 Profiles are optional, comma-separated, and must come first (`@default` when omitted).

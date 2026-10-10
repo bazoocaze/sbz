@@ -6,7 +6,6 @@ import os
 import sys
 import tomllib
 from dataclasses import dataclass
-from importlib import metadata
 from pathlib import Path
 
 from sbz_completion import handle_completion
@@ -19,9 +18,10 @@ def get_version() -> str:
         if toml_path.exists():
             with open(toml_path, "rb") as f:
                 return tomllib.load(f)["project"]["version"]
-        return metadata.version("sbz")
-    except (OSError, KeyError, tomllib.TOMLDecodeError, metadata.PackageNotFoundError):
-        return "unknown"
+        from importlib.metadata import version as get_pkg_version
+        return get_pkg_version("sbz")
+    except Exception:  # noqa: BLE001
+        return "?.?.?"
 
 
 VERSION = get_version()
@@ -94,7 +94,7 @@ def exists(path: str) -> bool:
 def expand(target: str) -> str:
     """Resolve ~ in a cap target."""
     if target.startswith("~"):
-        return os.environ["HOME"] + target[1:]
+        return os.environ.get("HOME", "") + target[1:]
     return target
 
 
@@ -110,13 +110,14 @@ def cap_key(cap: Cap) -> str:
 def parse_profiles(argv: list[str]) -> tuple[list[str], list[str]]:
     """Consume leading @profile tokens; the rest is flags and the command."""
     profiles = []
-    while argv and argv[0].startswith("@"):
-        for name in argv[0][1:].split(","):
+    rest = list(argv)
+    while rest and rest[0].startswith("@"):
+        for name in rest[0][1:].split(","):
             if name not in PROFILES:
                 die(f"unknown profile: {name} (valid: {', '.join(sorted(PROFILES))})")
             profiles.append(name)
-        argv.pop(0)
-    return profiles, argv
+        rest.pop(0)
+    return profiles, rest
 
 
 def flag_caps(opts) -> list[Cap]:
@@ -175,7 +176,9 @@ def build_args(caps: list[Cap], workspace: str) -> list[str]:
             args += ["--ro-bind", p, p]
 
     # Home: read-only base
-    home = os.environ["HOME"]
+    home = os.environ.get("HOME")
+    if not home:
+        die("HOME is not set")
     args += ["--ro-bind", home, home]
 
     # Workspace: read-write (before writable overrides so it can't re-expose them)
