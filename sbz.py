@@ -6,26 +6,22 @@ import os
 import sys
 import tomllib
 from dataclasses import dataclass
+from importlib import metadata
 from pathlib import Path
 
 from sbz_completion import handle_completion
 
 
 def get_version() -> str:
-    """Read version from pyproject.toml."""
+    """Read version from pyproject.toml (dev) or package metadata (installed)."""
     try:
-        # Try script directory first (direct execution)
         toml_path = Path(__file__).parent / "pyproject.toml"
         if toml_path.exists():
             with open(toml_path, "rb") as f:
-                data = tomllib.load(f)
-            return data["project"]["version"]
-        # Try installed package (uv tool)
-        # importlib.resources for package metadata
-        from importlib.metadata import version as get_pkg_version
-        return get_pkg_version("sbz")
-    except Exception:  # noqa: BLE001
-        return "?.?.?"
+                return tomllib.load(f)["project"]["version"]
+        return metadata.version("sbz")
+    except (OSError, KeyError, tomllib.TOMLDecodeError, metadata.PackageNotFoundError):
+        return "unknown"
 
 
 VERSION = get_version()
@@ -152,6 +148,7 @@ def build_args(caps: list[Cap], workspace: str) -> list[str]:
     """Build bwrap arguments from resolved caps."""
     args = [
         "--die-with-parent",
+        "--new-session",
         "--hostname", "sandbox",
         "--proc", "/proc",
         "--dev", "/dev",
@@ -287,7 +284,10 @@ def main() -> None:
         print(f"sbz: caps {' '.join(f'{c.op}({c.target})' for c in caps)}", file=sys.stderr)
         print(f"sbz: bwrap {' '.join(bwrap)} {' '.join(command)}", file=sys.stderr)
 
-    os.execvp("bwrap", ["bwrap"] + bwrap + command)
+    try:
+        os.execvp("bwrap", ["bwrap"] + bwrap + command)
+    except FileNotFoundError:
+        die("bwrap not found in PATH")
 
 
 if __name__ == "__main__":
