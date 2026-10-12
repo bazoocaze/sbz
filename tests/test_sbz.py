@@ -47,6 +47,17 @@ def test_aws_profile_grants_aws(tmp_path, monkeypatch):
     assert not has(mounts, "--tmpfs", f"{home}/.aws")
 
 
+def test_aws_profile_allows_sso_cache_writes(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ".aws/sso/cache", ".aws/cli/cache", ".ssh")
+    monkeypatch.setenv("HOME", str(home))
+    mounts = build(["aws"], tmp_path=tmp_path)
+    aws = index_of(mounts, "--ro-bind", f"{home}/.aws", f"{home}/.aws")
+    sso = index_of(mounts, "--bind", f"{home}/.aws/sso/cache", f"{home}/.aws/sso/cache")
+    cli = index_of(mounts, "--bind", f"{home}/.aws/cli/cache", f"{home}/.aws/cli/cache")
+    # Writable caches must be mounted after the read-only ~/.aws to override it
+    assert 0 <= aws < sso and 0 <= aws < cli
+
+
 def test_ssh_profile_grants_keys(tmp_path, monkeypatch):
     home = make_home(tmp_path, ".ssh", ".aws")
     monkeypatch.setenv("HOME", str(home))

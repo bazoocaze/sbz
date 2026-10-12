@@ -76,7 +76,7 @@ PROFILES = {
     "default": [],
     "dev": [read("~/.ssh/known_hosts"), read("~/.m2/settings.xml"), agent()],
     "gh": [read("~/.ssh/known_hosts"), agent()],
-    "aws": [read("~/.aws")],
+    "aws": [read("~/.aws"), write("~/.aws/sso/cache"), write("~/.aws/cli/cache")],
     "docker": [write("/run/docker.sock")],
     "ssh": [read("~/.ssh")],
 }

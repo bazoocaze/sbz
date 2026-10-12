@@ -14,7 +14,7 @@ uv tool install git+https://github.com/bazoocaze/sbz
 sbz ls -la                                  # baseline sandbox, with network
 sbz @dev mvn compile                        # agent + known_hosts + ~/.m2/settings.xml
 sbz @gh git push                            # SSH agent forwarding
-sbz @aws aws s3 ls                          # ~/.aws
+sbz @aws aws s3 ls                          # ~/.aws (ro) + SSO/CLI caches (rw)
 sbz @docker docker ps                       # Docker socket
 sbz @ssh ssh user@host                      # ~/.ssh keys
 sbz @dev,aws --no-net env                   # profiles are unioned
@@ -36,7 +36,7 @@ Baseline is always applied (system paths ro, home ro, workspace rw, `~/.cache` t
 | `@default` | – |
 | `@dev` | read `~/.ssh/known_hosts`, read `~/.m2/settings.xml`, SSH agent |
 | `@gh` | read `~/.ssh/known_hosts`, SSH agent |
-| `@aws` | read `~/.aws` |
+| `@aws` | read `~/.aws`, write `~/.aws/sso/cache` and `~/.aws/cli/cache` |
 | `@docker` | Docker socket |
 | `@ssh` | read `~/.ssh` |
 
@@ -60,6 +60,7 @@ Baseline is always applied (system paths ro, home ro, workspace rw, `~/.cache` t
 
 - `@dev` / `@gh` forward your SSH agent to the sandbox, so sandboxed commands can use your keys.
 - `@docker` mounts the Docker socket, granting root-equivalent access to the host.
+- `@aws` keeps `~/.aws` read-only but overlays `~/.aws/sso/cache` and `~/.aws/cli/cache` as writable, so SSO token refresh works while `config`/`credentials` stay protected.
 
 ## Completion
 
@@ -94,6 +95,7 @@ Note: `sbz -- CMD` runs `CMD` literally (for commands starting with `-`).
 | `~/.ssh` keys | `-r/-w` | deny | – | – | – | – | – | read |
 | `~/.ssh/known_hosts` (ro) | `-r/-w` | – | – | ✔ | ✔ | – | – | – |
 | `~/.aws` | `-r/-w` | deny | – | – | – | read | – | – |
+| `~/.aws/{sso,cli}/cache` (rw) | `-r/-w` | – | – | – | – | write | – | – |
 | `~/.m2/settings.xml` (ro) | `-r/-w` | – | – | ✔ | – | – | – | – |
 | SSH agent | – | – | – | ✔ | ✔ | – | – | – |
 | Docker socket | – | – | – | – | – | – | write | – |
