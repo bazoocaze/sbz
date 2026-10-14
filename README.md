@@ -27,7 +27,7 @@ Flags are shorthand for a single cap and override the profile. Workspace is `$PW
 
 ## Model
 
-Baseline is always applied (system paths ro, home ro, workspace rw, `~/.cache` tmpfs, global rw dirs, network, and `deny` on `~/.ssh` and `~/.aws`). Profiles are **grants only** — exceptions to the baseline, never inheritance.
+Baseline is always applied (system paths ro, home ro, workspace rw, `~/.cache` tmpfs, global rw dirs, network, and `deny` on `~/.ssh`, `~/.aws` and `~/.m2/settings.xml`). Profiles are **grants only** — exceptions to the baseline, never inheritance.
 
 ## Profiles
 
@@ -61,6 +61,7 @@ Baseline is always applied (system paths ro, home ro, workspace rw, `~/.cache` t
 - `@dev` / `@gh` forward your SSH agent to the sandbox, so sandboxed commands can use your keys.
 - `@docker` mounts the Docker socket, granting root-equivalent access to the host.
 - `@aws` keeps `~/.aws` read-only but overlays `~/.aws/sso/cache` and `~/.aws/cli/cache` as writable, so SSO token refresh works while `config`/`credentials` stay protected.
+- `~/.m2/settings.xml` is denied by default (it can hold repository/server credentials); `@dev` exposes it read-only.
 
 ## Completion
 
@@ -81,21 +82,23 @@ Note: `sbz -- CMD` runs `CMD` literally (for commands starting with `-`).
 
 ## Permissions
 
-`–` = nothing beyond the baseline; `deny` = empty tmpfs, `read` = ro-bind, `write` = bind.
+`🔎` = read-only (ro-bind), `✅` = writable (bind/tmpfs, network, SSH agent), `⛔` = denied (empty tmpfs / `/dev/null`), `-` = not available.
 
-| permissão | flags | global | @default | @dev | @gh | @aws | @docker | @ssh |
-|---|---|---|---|---|---|---|---|---|
-| system paths (ro) | – | ✔ | – | – | – | – | – | – |
-| home (ro) | – | ✔ | – | – | – | – | – | – |
-| workspace (rw) | – | ✔ | – | – | – | – | – | – |
-| `~/.cache` (tmpfs) | – | ✔ | – | – | – | – | – | – |
-| `~/.pi/agent` (rw) | – | ✔ | – | – | – | – | – | – |
-| `~/.local/share/{zoxide,uv,opencode}` (rw) | – | ✔ | – | – | – | – | – | – |
-| network | `--no-net` | ✔ | – | – | – | – | – | – |
-| `~/.ssh` keys | `-r/-w` | deny | – | – | – | – | – | read |
-| `~/.ssh/known_hosts` (ro) | `-r/-w` | – | – | ✔ | ✔ | – | – | – |
-| `~/.aws` | `-r/-w` | deny | – | – | – | read | – | – |
-| `~/.aws/{sso,cli}/cache` (rw) | `-r/-w` | – | – | – | – | write | – | – |
-| `~/.m2/settings.xml` (ro) | `-r/-w` | – | – | ✔ | – | – | – | – |
-| SSH agent | – | – | – | ✔ | ✔ | – | – | – |
-| Docker socket | – | – | – | – | – | – | write | – |
+**Effective** permissions of each run. `baseline` is the run with no profile — the baseline is always applied, and it is identical to `@default`; the other columns add that profile on top. The `flags` column shows flags dedicated to a permission (the generic `-r`/`-w` target any path, so they are not listed).
+
+| permissão | flags | baseline | @dev | @gh | @aws | @docker | @ssh |
+|---|---|---|---|---|---|---|---|
+| system paths | - | 🔎 | 🔎 | 🔎 | 🔎 | 🔎 | 🔎 |
+| home | - | 🔎 | 🔎 | 🔎 | 🔎 | 🔎 | 🔎 |
+| workspace | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `~/.cache` | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `~/.pi/agent` | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `~/.local/share/{zoxide,uv,opencode}` | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| network | `--no-net` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `~/.ssh` | - | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | 🔎 |
+| `~/.ssh/known_hosts` | - | ⛔ | 🔎 | 🔎 | ⛔ | ⛔ | 🔎 |
+| `~/.aws` | - | ⛔ | ⛔ | ⛔ | 🔎 | ⛔ | ⛔ |
+| `~/.aws/{sso,cli}/cache` | - | ⛔ | ⛔ | ⛔ | ✅ | ⛔ | ⛔ |
+| `~/.m2/settings.xml` | - | ⛔ | 🔎 | ⛔ | ⛔ | ⛔ | ⛔ |
+| SSH agent | - | - | ✅ | ✅ | - | - | - |
+| Docker socket | - | - | - | - | - | ✅ | - |

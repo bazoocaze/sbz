@@ -58,6 +58,11 @@ def deny(target: str) -> Cap:
     return Cap("deny", target)
 
 
+def tmpfs(target: str) -> Cap:
+    """Writable, ephemeral mount (contents live in RAM, not on host)."""
+    return Cap("tmpfs", target)
+
+
 def agent() -> Cap:
     return Cap("agent", "")
 
@@ -70,7 +75,7 @@ def nonet() -> Cap:
     return Cap("nonet", "network")
 
 
-PROTECTIONS = [deny("~/.ssh"), deny("~/.aws")]
+PROTECTIONS = [deny("~/.ssh"), deny("~/.aws"), deny("~/.m2/settings.xml")]
 
 PROFILES = {
     "default": [],
@@ -89,6 +94,37 @@ def die(msg: str, code: int = 1) -> None:
 
 def exists(path: str) -> bool:
     return Path(path).exists()
+
+
+def resolv_run_dir() -> str | None:
+    """Directory backing /etc/resolv.conf when it is a /run symlink (systemd-resolved)."""
+    resolv = Path("/etc/resolv.conf")
+    if resolv.is_symlink():
+        target = str(resolv.resolve())
+        if target.startswith("/run/") and exists(target):
+            return str(Path(target).parent)
+    return None
+
+
+def baseline(workspace: str = "") -> list[Cap]:
+    """Built-in rules applied on every run, regardless of profile.
+
+    Order matters: later mounts override earlier ones on the same resource.
+    """
+    if not os.environ.get("HOME"):
+        die("HOME is not set")
+    caps = [read(p) for p in RO_PATHS]
+    run_dir = resolv_run_dir()
+    if run_dir:
+        caps.append(read(run_dir))
+    caps += [read(p) for p in OPTIONAL_RO]
+    caps.append(read("~"))
+    if workspace:
+        caps.append(write(workspace))
+    caps.append(tmpfs("~/.cache"))
+    caps += [write(f"~/{d}") for d in GLOBAL_RW]
+    caps += [net()] + PROTECTIONS
+    return caps
 
 
 def expand(target: str) -> str:
@@ -132,10 +168,10 @@ def flag_caps(opts) -> list[Cap]:
     return caps
 
 
-def resolve(profiles: list[str], flags: list[Cap]) -> list[Cap]:
-    """Baseline protections, then profile grants, then flags (last wins per resource)."""
+def resolve(profiles: list[str], flags: list[Cap], workspace: str = "") -> list[Cap]:
+    """Baseline, then profile grants, then flags (last wins per resource)."""
     caps = {}
-    for cap in [net()] + PROTECTIONS:
+    for cap in baseline(workspace):
         caps[cap_key(cap)] = cap
     for name in profiles:
         for cap in PROFILES[name]:
@@ -157,44 +193,7 @@ def build_args(caps: list[Cap], workspace: str) -> list[str]:
         "--tmpfs", "/run",
     ]
 
-    # Read-only system paths
-    for p in RO_PATHS:
-        if exists(p):
-            args += ["--ro-bind", p, p]
-
-    # Resolve resolv.conf symlink into /run (systemd-resolved)
-    resolv = Path("/etc/resolv.conf")
-    if resolv.is_symlink():
-        target = str(resolv.resolve())
-        if target.startswith("/run/") and exists(target):
-            run_dir = str(Path(target).parent)
-            args += ["--ro-bind", run_dir, run_dir]
-
-    # Optional paths
-    for p in OPTIONAL_RO:
-        if exists(p):
-            args += ["--ro-bind", p, p]
-
-    # Home: read-only base
-    home = os.environ.get("HOME")
-    if not home:
-        die("HOME is not set")
-    args += ["--ro-bind", home, home]
-
-    # Workspace: read-write (before writable overrides so it can't re-expose them)
-    args += ["--bind", workspace, workspace]
-
-    # ~/.cache → tmpfs (tool caches, writable, não persiste no host)
-    if exists(f"{home}/.cache"):
-        args += ["--tmpfs", f"{home}/.cache"]
-
-    # Global writable grants
-    for d in GLOBAL_RW:
-        p = f"{home}/{d}"
-        if exists(p):
-            args += ["--bind", p, p]
-
-    # Caps in insertion order: protections first, then grants
+    # Caps in insertion order: baseline mounts, then grants
     for cap in caps:
         if cap.op == "agent":
             sock = os.environ.get("SSH_AUTH_SOCK")
@@ -211,6 +210,8 @@ def build_args(caps: list[Cap], workspace: str) -> list[str]:
                 args += ["--tmpfs", path]
             else:
                 args += ["--ro-bind", "/dev/null", path]
+        elif cap.op == "tmpfs":
+            args += ["--tmpfs", path]
         elif cap.op == "read":
             args += ["--ro-bind", path, path]
         else:
@@ -278,7 +279,7 @@ def main() -> None:
     workspace = str(Path(workspace).resolve())
 
     flags = flag_caps(opts)
-    caps = resolve(profiles, flags)
+    caps = resolve(profiles, flags, workspace)
     bwrap = build_args(caps, workspace)
 
     # verbose

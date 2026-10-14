@@ -26,8 +26,9 @@ def make_home(tmp_path, *subdirs):
 
 
 def build(profiles, flags=(), workspace=None, tmp_path=None):
-    caps = sbz.resolve(profiles, list(flags))
-    return sbz.build_args(caps, str(workspace or tmp_path))
+    ws = str(workspace or tmp_path)
+    caps = sbz.resolve(profiles, list(flags), ws)
+    return sbz.build_args(caps, ws)
 
 
 def test_default_is_baseline_only(tmp_path, monkeypatch):
@@ -86,14 +87,39 @@ def test_gh_profile_grants_agent(tmp_path, monkeypatch):
     assert not has(mounts, "--ro-bind", f"{home}/.m2/settings.xml", f"{home}/.m2/settings.xml")
 
 
-def test_dev_grants_agent_and_m2_settings(tmp_path, monkeypatch):
-    home = make_home(tmp_path, ".m2", ".ssh")
-    (home / ".m2" / "settings.xml").write_text("")
+def test_dev_grants_agent_and_known_hosts(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ".ssh")
+    (home / ".ssh" / "known_hosts").write_text("")
     monkeypatch.setenv("HOME", str(home))
     caps = sbz.resolve(["dev"], [])
     assert sbz.agent() in caps
     args = sbz.build_args(caps, str(tmp_path))
+    assert has(args, "--ro-bind", f"{home}/.ssh/known_hosts", f"{home}/.ssh/known_hosts")
+
+
+def test_m2_settings_denied_by_default(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ".m2")
+    (home / ".m2" / "settings.xml").write_text("")
+    monkeypatch.setenv("HOME", str(home))
+    args = build([], tmp_path=tmp_path)
+    assert has(args, "--ro-bind", "/dev/null", f"{home}/.m2/settings.xml")
+
+
+def test_dev_grants_m2_settings(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ".m2", ".ssh")
+    (home / ".m2" / "settings.xml").write_text("")
+    monkeypatch.setenv("HOME", str(home))
+    args = build(["dev"], tmp_path=tmp_path)
     assert has(args, "--ro-bind", f"{home}/.m2/settings.xml", f"{home}/.m2/settings.xml")
+    assert not has(args, "--ro-bind", "/dev/null", f"{home}/.m2/settings.xml")
+
+
+def test_gh_denies_m2_settings(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ".m2", ".ssh")
+    (home / ".m2" / "settings.xml").write_text("")
+    monkeypatch.setenv("HOME", str(home))
+    args = build(["gh"], tmp_path=tmp_path)
+    assert has(args, "--ro-bind", "/dev/null", f"{home}/.m2/settings.xml")
 
 
 def test_docker_profile_grants_socket(tmp_path, monkeypatch):
