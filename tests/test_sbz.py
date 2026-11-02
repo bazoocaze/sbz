@@ -97,6 +97,23 @@ def test_dev_grants_agent_and_known_hosts(tmp_path, monkeypatch):
     assert has(args, "--ro-bind", f"{home}/.ssh/known_hosts", f"{home}/.ssh/known_hosts")
 
 
+def test_dev_grants_cargo_registry(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ".cargo/registry", ".ssh")
+    monkeypatch.setenv("HOME", str(home))
+    args = build(["dev"], tmp_path=tmp_path)
+    home_ro = index_of(args, "--ro-bind", str(home), str(home))
+    registry_rw = index_of(args, "--bind", f"{home}/.cargo/registry", f"{home}/.cargo/registry")
+    # Writable registry must be mounted after the read-only ~ to override it
+    assert 0 <= home_ro < registry_rw
+
+
+def test_cargo_registry_not_granted_by_other_profiles(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ".cargo/registry", ".ssh")
+    monkeypatch.setenv("HOME", str(home))
+    args = build(["gh"], tmp_path=tmp_path)
+    assert not has(args, "--bind", f"{home}/.cargo/registry", f"{home}/.cargo/registry")
+
+
 def test_m2_settings_denied_by_default(tmp_path, monkeypatch):
     home = make_home(tmp_path, ".m2")
     (home / ".m2" / "settings.xml").write_text("")

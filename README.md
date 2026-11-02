@@ -13,6 +13,7 @@ uv tool install git+https://github.com/bazoocaze/sbz
 ```bash
 sbz ls -la                                  # baseline sandbox, with network
 sbz @dev mvn compile                        # agent + known_hosts + ~/.m2/settings.xml
+sbz @dev cargo build                        # + ~/.cargo/registry (rw)
 sbz @gh git push                            # SSH agent forwarding
 sbz @aws aws s3 ls                          # ~/.aws (ro) + SSO/CLI caches (rw)
 sbz @docker docker ps                       # Docker socket
@@ -34,7 +35,7 @@ Baseline is always applied (system paths ro, home ro, workspace rw, `~/.cache` t
 | profile | grants |
 |---|---|
 | `@default` | – |
-| `@dev` | read `~/.ssh/known_hosts`, read `~/.m2/settings.xml`, SSH agent |
+| `@dev` | read `~/.ssh/known_hosts`, read `~/.m2/settings.xml`, SSH agent, write `~/.cargo/registry` |
 | `@gh` | read `~/.ssh/known_hosts`, SSH agent |
 | `@aws` | read `~/.aws`, write `~/.aws/sso/cache` and `~/.aws/cli/cache` |
 | `@docker` | Docker socket |
@@ -62,6 +63,7 @@ Baseline is always applied (system paths ro, home ro, workspace rw, `~/.cache` t
 - `@docker` mounts the Docker socket, granting root-equivalent access to the host.
 - `@aws` keeps `~/.aws` read-only but overlays `~/.aws/sso/cache` and `~/.aws/cli/cache` as writable, so SSO token refresh works while `config`/`credentials` stay protected.
 - `~/.m2/settings.xml` is denied by default (it can hold repository/server credentials); `@dev` exposes it read-only.
+- `@dev` makes `~/.cargo/registry` writable so `cargo add`/`cargo build` can fetch crates. That cache is shared with the host: a sandboxed build script can alter `registry/src` of other crates, and the change persists for future builds — pass `-w ~/.cargo/registry` per project instead if you don't want it in the profile. `~/.cargo/.package-cache` stays read-only (`cargo package`/`publish` still fail); use `-w ~/.cargo` for those.
 
 ## Completion
 
@@ -100,5 +102,6 @@ Note: `sbz -- CMD` runs `CMD` literally (for commands starting with `-`).
 | `~/.aws` | - | ⛔ | ⛔ | ⛔ | 🔎 | ⛔ | ⛔ |
 | `~/.aws/{sso,cli}/cache` | - | ⛔ | ⛔ | ⛔ | ✅ | ⛔ | ⛔ |
 | `~/.m2/settings.xml` | - | ⛔ | 🔎 | ⛔ | ⛔ | ⛔ | ⛔ |
+| `~/.cargo/registry` | - | 🔎 | ✅ | 🔎 | 🔎 | 🔎 | 🔎 |
 | SSH agent | - | - | ✅ | ✅ | - | - | - |
 | Docker socket | - | - | - | - | - | ✅ | - |
