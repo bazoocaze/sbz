@@ -11,7 +11,7 @@ _sbz() {
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
     if [[ "$cur" == @* ]]; then
-        COMPREPLY=( $(compgen -W "@default @dev @gh @aws @docker @ssh" -- "$cur") )
+        COMPREPLY=( $(compgen -W "@default @dev @gh @aws @docker @gpu @ssh" -- "$cur") )
         return 0
     fi
 
@@ -50,7 +50,7 @@ _sbz() {
         '(-r --read)'{-r,--read}'[grant read]:dir:_files -/' \
         '(-w --write)'{-w,--write}'[grant write]:dir:_files -/' \
         '--completion[print shell completion script]:shell:(bash zsh fish)' \
-        '1:profile:("@default" "@dev" "@gh" "@aws" "@docker" "@ssh")' \
+        '1:profile:("@default" "@dev" "@gh" "@aws" "@docker" "@gpu" "@ssh")' \
         '*::command:_normal'
 }
 compdef _sbz sbz
@@ -65,7 +65,7 @@ complete -c sbz -l no-net -d 'no network access'
 complete -c sbz -s r -l read -r -a '(__fish_print_directories)' -d 'grant read'
 complete -c sbz -s w -l write -r -a '(__fish_print_directories)' -d 'grant write'
 complete -c sbz -l completion -x -a 'bash zsh fish' -d 'print shell completion script'
-complete -c sbz -f -a '@default @dev @gh @aws @docker @ssh' -d 'profile'
+complete -c sbz -f -a '@default @dev @gh @aws @docker @gpu @ssh' -d 'profile'
 """
 
 COMPLETION_USAGE = """usage: sbz --completion {bash|zsh|fish}

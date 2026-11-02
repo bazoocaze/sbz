@@ -63,6 +63,11 @@ def tmpfs(target: str) -> Cap:
     return Cap("tmpfs", target)
 
 
+def dev(target: str) -> Cap:
+    """Writable bind that keeps device nodes (bwrap --dev-bind)."""
+    return Cap("dev", target)
+
+
 def agent() -> Cap:
     return Cap("agent", "")
 
@@ -88,6 +93,7 @@ PROFILES = {
     "gh": [read("~/.ssh/known_hosts"), agent()],
     "aws": [read("~/.aws"), write("~/.aws/sso/cache"), write("~/.aws/cli/cache")],
     "docker": [write("/run/docker.sock")],
+    "gpu": [dev("/dev/dri")],
     "ssh": [read("~/.ssh")],
 }
 
@@ -153,7 +159,8 @@ def parse_profiles(argv: list[str]) -> tuple[list[str], list[str]]:
     profiles = []
     rest = list(argv)
     while rest and rest[0].startswith("@"):
-        for name in rest[0][1:].split(","):
+        for name in rest[0].split(","):
+            name = name.removeprefix("@")  # @gpu,@dev == @gpu,dev
             if name not in PROFILES:
                 die(f"unknown profile: {name} (valid: {', '.join(sorted(PROFILES))})")
             profiles.append(name)
@@ -219,6 +226,8 @@ def build_args(caps: list[Cap], workspace: str) -> list[str]:
             args += ["--tmpfs", path]
         elif cap.op == "read":
             args += ["--ro-bind", path, path]
+        elif cap.op == "dev":
+            args += ["--dev-bind", path, path]
         else:
             args += ["--bind", path, path]
 
@@ -249,9 +258,10 @@ def build_parser() -> optparse.OptionParser:
         usage="sbz [@profiles] [OPTIONS] [--] COMMAND [ARGS...]",
         description="Sandboxed command execution via bubblewrap.",
         epilog=(
-            "profiles: @default, @dev, @gh, @aws, @docker, @ssh (comma-separated, default @default)\n"
+            "profiles: @default, @dev, @gh, @aws, @docker, @gpu, @ssh (comma-separated, default @default)\n"
             "flags are shorthand for caps and override the profile.\n"
-            "security: @gh/@dev forward your SSH agent; @docker grants root-equivalent host access."
+            "security: @gh/@dev forward your SSH agent; @docker grants root-equivalent host access;\n"
+            "@gpu exposes the DRM devices, which can read VRAM of other processes."
         ),
     )
     parser.version = f"sbz v{VERSION}"

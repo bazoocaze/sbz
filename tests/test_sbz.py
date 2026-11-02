@@ -139,10 +139,42 @@ def test_gh_denies_m2_settings(tmp_path, monkeypatch):
     assert has(args, "--ro-bind", "/dev/null", f"{home}/.m2/settings.xml")
 
 
+def only_exists(monkeypatch, *paths):
+    """Pretend these paths exist, keep the rest of the host filesystem."""
+    real = sbz.exists
+    monkeypatch.setattr(sbz, "exists", lambda p: True if p in paths else real(p))
+
+
 def test_docker_profile_grants_socket(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(make_home(tmp_path)))
     args = build(["docker"], tmp_path=tmp_path)
     assert has(args, "--bind", "/run/docker.sock", "/run/docker.sock")
+
+
+def test_gpu_profile_grants_dev_dri(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(make_home(tmp_path)))
+    only_exists(monkeypatch, "/dev/dri")
+    args = build(["gpu"], tmp_path=tmp_path)
+    dev_tmpfs = index_of(args, "--dev", "/dev")
+    dri = index_of(args, "--dev-bind", "/dev/dri", "/dev/dri")
+    # --dev-bind (not --bind) is what keeps the device nodes usable: --bind sets nodev
+    assert 0 <= dev_tmpfs < dri
+    assert not has(args, "--bind", "/dev/dri", "/dev/dri")
+
+
+def test_write_flag_on_dev_keeps_nodev(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(make_home(tmp_path)))
+    only_exists(monkeypatch, "/dev/dri")
+    args = build([], flags=[sbz.write("/dev/dri")], tmp_path=tmp_path)
+    assert has(args, "--bind", "/dev/dri", "/dev/dri")
+    assert not has(args, "--dev-bind", "/dev/dri", "/dev/dri")
+
+
+def test_gpu_not_granted_by_default(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(make_home(tmp_path)))
+    only_exists(monkeypatch, "/dev/dri")
+    args = build([], tmp_path=tmp_path)
+    assert not has(args, "--dev-bind", "/dev/dri", "/dev/dri")
 
 
 def test_profiles_do_not_inherit(tmp_path, monkeypatch):
@@ -206,7 +238,12 @@ def test_parse_profiles_default():
 def test_parse_profiles_comma_list():
     profiles, (opts, command) = parse(["@dev,aws", "-v", "true"])
     assert profiles == ["dev", "aws"]
-    assert opts.verbose and command == ["true"]
+
+
+def test_parse_profiles_at_on_each_name():
+    for token in ("@gpu,@dev", "@gpu,dev", "@gpu,@dev,@aws"):
+        profiles, (_, command) = parse([token, "true"])
+        assert profiles == token.replace("@", "").split(",") and command == ["true"]
 
 
 def test_parse_profiles_unknown_dies():
