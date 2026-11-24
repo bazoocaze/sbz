@@ -114,6 +114,14 @@ def test_cargo_registry_not_granted_by_other_profiles(tmp_path, monkeypatch):
     assert not has(args, "--bind", f"{home}/.cargo/registry", f"{home}/.cargo/registry")
 
 
+def test_global_rw_includes_opencode_state(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ".local/state/opencode", ".local/share/opencode")
+    monkeypatch.setenv("HOME", str(home))
+    args = build([], tmp_path=tmp_path)
+    # opencode keeps locks under XDG_STATE_HOME and fails with EROFS without it
+    assert has(args, "--bind", f"{home}/.local/state/opencode", f"{home}/.local/state/opencode")
+
+
 def test_m2_settings_denied_by_default(tmp_path, monkeypatch):
     home = make_home(tmp_path, ".m2")
     (home / ".m2" / "settings.xml").write_text("")

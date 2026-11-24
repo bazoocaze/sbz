@@ -98,7 +98,7 @@ Note: `sbz -- CMD` runs `CMD` literally (for commands starting with `-`).
 | workspace | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `~/.cache` | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `~/.pi/agent` | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `~/.local/share/{zoxide,uv,opencode}` | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `~/.local/share/{zoxide,uv,opencode}`, `~/.local/state/opencode` | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | network | `--no-net` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `~/.ssh` | - | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | 🔎 |
 | `~/.ssh/known_hosts` | - | ⛔ | 🔎 | 🔎 | ⛔ | ⛔ | ⛔ | 🔎 |

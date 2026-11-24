@@ -35,7 +35,13 @@ RO_PATHS = ["/usr", "/bin", "/sbin", "/etc", "/lib", "/lib64", "/var"]
 OPTIONAL_RO = ["/opt", "/nix", "/boot", "/sys"]
 
 # Always applied, no profile needed
-GLOBAL_RW = [".pi/agent", ".local/share/zoxide", ".local/share/uv", ".local/share/opencode"]
+GLOBAL_RW = [
+    ".pi/agent",
+    ".local/share/zoxide",
+    ".local/share/uv",
+    ".local/share/opencode",
+    ".local/state/opencode",
+]
 
 
 @dataclass(frozen=True)
