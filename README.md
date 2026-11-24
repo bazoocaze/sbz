@@ -66,6 +66,7 @@ Baseline is always applied (system paths ro, home ro, workspace rw, `~/.cache` t
 - `@gpu` bind-mounts `/dev/dri` read-write with device nodes preserved (`--dev-bind`; a plain `-w /dev/dri` yields `nodev` and every `open()` fails with `EACCES`). GPU access is not a security boundary: the sandbox can drive the device and read VRAM belonging to other processes. `/dev/kfd` (ROCm compute) and `/dev/nvidia*` are not included — add them with `-w` + `--dev-bind` semantics via a profile edit if needed.
 - `@aws` keeps `~/.aws` read-only but overlays `~/.aws/sso/cache` and `~/.aws/cli/cache` as writable, so SSO token refresh works while `config`/`credentials` stay protected.
 - `~/.m2/settings.xml` is denied by default (it can hold repository/server credentials); `@dev` exposes it read-only.
+- `~/.npm` is denied except `_cacache` and `_npx` (npx needs them to install and run packages, e.g. `npx ccusage`). That means a sandboxed run can plant a package in `_npx` that a later **host** `npx` reuses — install tools globally on the host (`npm i -g`) if you need to avoid that.
 - `@dev` makes `~/.cargo/registry` writable so `cargo add`/`cargo build` can fetch crates. That cache is shared with the host: a sandboxed build script can alter `registry/src` of other crates, and the change persists for future builds — pass `-w ~/.cargo/registry` per project instead if you don't want it in the profile. `~/.cargo/.package-cache` stays read-only (`cargo package`/`publish` still fail); use `-w ~/.cargo` for those.
 
 ## Completion
@@ -99,6 +100,7 @@ Note: `sbz -- CMD` runs `CMD` literally (for commands starting with `-`).
 | `~/.cache` | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `~/.pi/agent` | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `~/.local/share/{zoxide,uv,opencode}`, `~/.local/state/opencode` | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `~/.npm/{_cacache,_npx}` | - | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | network | `--no-net` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `~/.ssh` | - | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | ⛔ | 🔎 |
 | `~/.ssh/known_hosts` | - | ⛔ | 🔎 | 🔎 | ⛔ | ⛔ | ⛔ | 🔎 |

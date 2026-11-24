@@ -41,6 +41,8 @@ GLOBAL_RW = [
     ".local/share/uv",
     ".local/share/opencode",
     ".local/state/opencode",
+    ".npm/_cacache",
+    ".npm/_npx",
 ]
 
 

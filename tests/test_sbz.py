@@ -122,6 +122,15 @@ def test_global_rw_includes_opencode_state(tmp_path, monkeypatch):
     assert has(args, "--bind", f"{home}/.local/state/opencode", f"{home}/.local/state/opencode")
 
 
+def test_global_rw_includes_npm_caches(tmp_path, monkeypatch):
+    home = make_home(tmp_path, ".npm/_cacache", ".npm/_npx")
+    monkeypatch.setenv("HOME", str(home))
+    args = build([], tmp_path=tmp_path)
+    # npx installs to _npx and caches tarballs in _cacache; both must be writable
+    assert has(args, "--bind", f"{home}/.npm/_cacache", f"{home}/.npm/_cacache")
+    assert has(args, "--bind", f"{home}/.npm/_npx", f"{home}/.npm/_npx")
+
+
 def test_m2_settings_denied_by_default(tmp_path, monkeypatch):
     home = make_home(tmp_path, ".m2")
     (home / ".m2" / "settings.xml").write_text("")
